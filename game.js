@@ -56,6 +56,7 @@
   };
 
   const bullets = [];
+  const enemyBullets = [];
   const enemies = [];
   const pickups = [];
   const obstacles = [];
@@ -252,6 +253,7 @@
     player.invuln = 0;
 
     bullets.length = 0;
+    enemyBullets.length = 0;
     enemies.length = 0;
     pickups.length = 0;
     obstacles.length = 0;
@@ -319,7 +321,8 @@
           vx: isWarship ? rand(-12, 12) : rand(-25, 25),
           hp: isWarship ? 4 : isHeli ? 2 : 1,
           type: isWarship ? 'warship' : isHeli ? 'heli' : 'boat',
-          r: isWarship ? 23 : isHeli ? 18 : 14
+          r: isWarship ? 23 : isHeli ? 18 : 14,
+          fireCooldown: rand(0.4, 1.2)
         });
       } else if (kindRoll < 0.78) {
         pickups.push({ x, y: world.lastSpawnY, r: 14, pulse: rand(0, Math.PI * 2) });
@@ -412,6 +415,23 @@
       if (b.y > world.scroll + viewDepth + 120) bullets.splice(i, 1);
     }
 
+    for (let i = enemyBullets.length - 1; i >= 0; i--) {
+      const b = enemyBullets[i];
+      b.x += b.vx * dt;
+      b.y += b.vy * dt;
+      if (b.y < world.scroll - 120) {
+        enemyBullets.splice(i, 1);
+        continue;
+      }
+      const dx = b.x - player.x;
+      const dy = b.y - (world.scroll + player.y);
+      if (dx * dx + dy * dy < (b.r + player.r) ** 2) {
+        enemyBullets.splice(i, 1);
+        damagePlayer();
+        hitFx(b.x, b.y, 10, '#ffb19f');
+      }
+    }
+
     for (let i = pickups.length - 1; i >= 0; i--) {
       const p = pickups[i];
       p.pulse += dt * 5;
@@ -436,13 +456,6 @@
       if (o.y < world.scroll - 180) {
         obstacles.splice(i, 1);
         continue;
-      }
-
-      const dxp = o.x - player.x;
-      const dyp = o.y - (world.scroll + player.y);
-      if (dxp * dxp + dyp * dyp < (o.r + player.r) ** 2) {
-        damagePlayer();
-        hitFx(o.x, o.y, 14, '#e8d7a2');
       }
 
       for (let j = bullets.length - 1; j >= 0; j--) {
@@ -478,13 +491,42 @@
         continue;
       }
 
-      const dxp = e.x - player.x;
-      const dyp = e.y - (world.scroll + player.y);
-      if (dxp * dxp + dyp * dyp < (e.r + player.r) ** 2) {
-        enemies.splice(i, 1);
-        damagePlayer();
-        hitFx(e.x, e.y, 22, '#ff784f');
-        continue;
+      const isAirTarget = e.type === 'heli';
+      if (isAirTarget) {
+        const dxp = e.x - player.x;
+        const dyp = e.y - (world.scroll + player.y);
+        if (dxp * dxp + dyp * dyp < (e.r + player.r) ** 2) {
+          enemies.splice(i, 1);
+          damagePlayer();
+          hitFx(e.x, e.y, 22, '#ff784f');
+          continue;
+        }
+      }
+
+      e.fireCooldown -= dt;
+      if (e.fireCooldown <= 0) {
+        const playerWorldY = world.scroll + player.y;
+        const enemyScreenY = worldToScreenY(e.y, getScale());
+        const enemyVisible = enemyScreenY >= -40 && enemyScreenY <= vh + 40;
+        if (enemyVisible && e.y > playerWorldY + 40) {
+          const fireRate = e.type === 'warship' ? 2.25 : e.type === 'heli' ? 2.6 : 2.9;
+          e.fireCooldown = fireRate + rand(0.35, 0.9);
+          if (enemyBullets.length > 8 || Math.random() < 0.45) continue;
+          const aimX = player.x + (player.x - e.x) * 0.12 + rand(-10, 10);
+          const dx = aimX - e.x;
+          const dy = playerWorldY - e.y;
+          const len = Math.hypot(dx, dy) || 1;
+          const speed = e.type === 'warship' ? 225 : 260;
+          enemyBullets.push({
+            x: e.x,
+            y: e.y - 14,
+            vx: (dx / len) * speed * 0.28,
+            vy: (dy / len) * speed,
+            r: e.type === 'warship' ? 4.4 : 3.8
+          });
+        } else {
+          e.fireCooldown = rand(0.7, 1.2);
+        }
       }
 
       for (let j = bullets.length - 1; j >= 0; j--) {
@@ -691,6 +733,24 @@
     });
   }
 
+  function drawEnemyBullets(scale, left) {
+    ctx.fillStyle = '#ff7e62';
+    enemyBullets.forEach((b) => {
+      const sy = worldToScreenY(b.y, scale);
+      if (sy < -24 || sy > vh + 24) return;
+      const sx = worldToScreenX(b.x, scale, left);
+      ctx.beginPath();
+      ctx.arc(sx, sy, b.r * scale, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(255,163,136,0.55)';
+      ctx.lineWidth = 1.2 * scale;
+      ctx.beginPath();
+      ctx.moveTo(sx, sy);
+      ctx.lineTo(sx - b.vx * 0.028 * scale, sy - b.vy * 0.028 * scale);
+      ctx.stroke();
+    });
+  }
+
   function drawParticles(scale, left) {
     particles.forEach((p) => {
       const sy = worldToScreenY(p.y, scale);
@@ -727,6 +787,7 @@
     drawPickups(scale, left);
     drawEnemies(scale, left);
     drawBullets(scale, left);
+    drawEnemyBullets(scale, left);
     drawBlasts(scale, left);
     drawParticles(scale, left);
     drawPlayer(scale, left);
