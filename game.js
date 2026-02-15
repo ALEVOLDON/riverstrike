@@ -28,6 +28,17 @@
 
   const player = { x: 210, y: 220, r: 15, hp: 3, fuel: 100, cd: 0, inv: 0 };
   const touch = { x: 0, y: 0, fire: false, pid: null };
+  const keys = new Set();
+  const keyMap = {
+    ArrowLeft: 'left',
+    KeyA: 'left',
+    ArrowRight: 'right',
+    KeyD: 'right',
+    ArrowUp: 'up',
+    KeyW: 'up',
+    ArrowDown: 'down',
+    KeyS: 'down'
+  };
 
   const bullets = [];
   const enemies = [];
@@ -135,15 +146,20 @@
     world.score += dt * (18 + world.speed * 0.15);
     player.fuel = Math.max(0, player.fuel - dt * 4.1);
 
-    player.x += touch.x * 165 * dt;
-    player.y -= touch.y * 100 * dt;
+    const keyX = (keys.has('right') ? 1 : 0) - (keys.has('left') ? 1 : 0);
+    const keyY = (keys.has('down') ? 1 : 0) - (keys.has('up') ? 1 : 0);
+    const moveX = touch.x || keyX;
+    const moveY = touch.y || keyY;
+
+    player.x += moveX * 165 * dt;
+    player.y -= moveY * 100 * dt;
     player.y = clamp(player.y, 80, 360);
     player.x = clamp(player.x, 20, world.width - 20);
 
     player.cd = Math.max(0, player.cd - dt);
     player.inv = Math.max(0, player.inv - dt);
 
-    if (touch.fire && player.cd <= 0) {
+    if ((touch.fire || keys.has('fire')) && player.cd <= 0) {
       player.cd = 0.12;
       bullets.push({ x: player.x, y: world.scroll + player.y + 24, vy: 430, r: 4 });
     }
@@ -358,6 +374,32 @@
   fireBtn.addEventListener('pointerdown', () => { touch.fire = true; });
   fireBtn.addEventListener('pointerup', () => { touch.fire = false; });
   fireBtn.addEventListener('pointercancel', () => { touch.fire = false; });
+
+  window.addEventListener('keydown', (e) => {
+    const dir = keyMap[e.code];
+    if (dir) {
+      keys.add(dir);
+      e.preventDefault();
+      return;
+    }
+    if (e.code === 'Space') {
+      keys.add('fire');
+      e.preventDefault();
+    }
+  });
+
+  window.addEventListener('keyup', (e) => {
+    const dir = keyMap[e.code];
+    if (dir) {
+      keys.delete(dir);
+      e.preventDefault();
+      return;
+    }
+    if (e.code === 'Space') {
+      keys.delete('fire');
+      e.preventDefault();
+    }
+  });
 
   ui.start.addEventListener('click', () => {
     ui.overlay.classList.add('hidden');
