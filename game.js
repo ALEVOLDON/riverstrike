@@ -16,18 +16,33 @@
 
   const world = {
     width: 420,
-    segStep: 120,
-    maxSeg: 180,
     segments: [],
+    segStep: 120,
+    maxSeg: 200,
     scroll: 0,
     speed: 170,
+    targetSpeed: 170,
     score: 0,
     running: false,
-    lastSpawnY: 900
+    lastSpawnY: 1000
   };
 
-  const player = { x: 210, y: 220, r: 15, hp: 3, fuel: 100, cd: 0, inv: 0 };
-  const touch = { x: 0, y: 0, fire: false, pid: null };
+  const player = {
+    x: 210,
+    y: 640,
+    r: 15,
+    hp: 3,
+    fuel: 100,
+    cooldown: 0,
+    invuln: 0
+  };
+
+  const controls = {
+    x: 0,
+    y: 0,
+    firing: false,
+    pointerId: null
+  };
   const keys = new Set();
   const keyMap = {
     ArrowLeft: 'left',
@@ -44,24 +59,86 @@
   const enemies = [];
   const pickups = [];
   const obstacles = [];
+  const blasts = [];
   const particles = [];
+  const assets = {};
+  const assetList = {
+    plane: 'assets/plane.svg',
+    boat: 'assets/boat.svg',
+    heliBody: 'assets/heli_body.svg',
+    heliRotor: 'assets/heli_rotor.svg',
+    warship: 'assets/warship.svg',
+    island: 'assets/island.svg',
+    fuel: 'assets/fuel.svg',
+    boom1: 'assets/explosion_1.svg',
+    boom2: 'assets/explosion_2.svg',
+    boom3: 'assets/explosion_3.svg',
+    boom4: 'assets/explosion_4.svg'
+  };
+  const assetState = { ready: false };
 
   let vw = 0;
   let vh = 0;
   let dpr = 1;
-  let last = 0;
+  let lastTime = 0;
+  let animClock = 0;
+  let playerTilt = 0;
   let audioCtx = null;
   let masterGain = null;
   let musicGain = null;
   let sfxGain = null;
-  let musicTimer = 0;
-  let musicStep = 0;
-  const melody = [523.25, 659.25, 783.99, 659.25, 587.33, 659.25, 698.46, 659.25];
-  const bass = [130.81, 146.83, 164.81, 146.83];
+  let audioUnlocked = false;
+  const musicState = {
+    timer: 0,
+    step: 0,
+    melody: [523.25, 659.25, 783.99, 659.25, 587.33, 659.25, 698.46, 659.25],
+    bass: [130.81, 146.83, 164.81, 146.83]
+  };
 
-  const rand = (a, b) => Math.random() * (b - a) + a;
-  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
-  const scale = () => Math.min(vw / world.width, 1.8);
+  function rand(min, max) {
+    return Math.random() * (max - min) + min;
+  }
+
+  function clamp(v, min, max) {
+    return Math.max(min, Math.min(max, v));
+  }
+
+  function loadImage(src) {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.onerror = reject;
+      img.src = src;
+    });
+  }
+
+  async function loadAssets() {
+    const keys = Object.keys(assetList);
+    const loaded = await Promise.all(keys.map((k) => loadImage(assetList[k])));
+    keys.forEach((k, i) => {
+      assets[k] = loaded[i];
+    });
+    assetState.ready = true;
+    const msg = ui.overlay.querySelector('p');
+    if (msg && !world.running) {
+      msg.textContent = 'Веди истребитель по реке, уничтожай цели и собирай топливо.';
+    }
+  }
+
+  function drawSprite(img, x, y, w, h, rot = 0, alpha = 1) {
+    if (!img) return;
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(rot);
+    ctx.globalAlpha = alpha;
+    ctx.drawImage(img, -w * 0.5, -h * 0.5, w, h);
+    ctx.restore();
+    ctx.globalAlpha = 1;
+  }
+
+  function spawnBlast(x, y, size = 1) {
+    blasts.push({ x, y, age: 0, life: 0.32, size });
+  }
 
   function initAudio() {
     if (audioCtx) return;
@@ -72,8 +149,8 @@
     musicGain = audioCtx.createGain();
     sfxGain = audioCtx.createGain();
     masterGain.gain.value = 1.0;
-    musicGain.gain.value = 0.9;
-    sfxGain.gain.value = 1.3;
+    musicGain.gain.value = 0.95;
+    sfxGain.gain.value = 1.35;
     musicGain.connect(masterGain);
     sfxGain.connect(masterGain);
     masterGain.connect(audioCtx.destination);
@@ -82,11 +159,17 @@
   function ensureAudio() {
     initAudio();
     if (!audioCtx) return;
-    if (audioCtx.state !== 'running') audioCtx.resume().catch(() => {});
+    if (audioCtx.state !== 'running') {
+      audioCtx.resume().then(() => {
+        audioUnlocked = audioCtx.state === 'running';
+      }).catch(() => {});
+    } else {
+      audioUnlocked = true;
+    }
   }
 
-  function tone(freq, duration, type, gainValue, out, attack = 0.004, decay = 0.08) {
-    if (!audioCtx || !out || audioCtx.state !== 'running') return;
+  function playTone(freq, duration, type, gainValue, targetGain, attack = 0.004, decay = 0.08) {
+    if (!audioCtx || !targetGain || audioCtx.state !== 'running') return;
     const now = audioCtx.currentTime;
     const osc = audioCtx.createOscillator();
     const gain = audioCtx.createGain();
@@ -96,15 +179,25 @@
     gain.gain.linearRampToValueAtTime(gainValue, now + attack);
     gain.gain.exponentialRampToValueAtTime(0.0001, now + duration + decay);
     osc.connect(gain);
-    gain.connect(out);
+    gain.connect(targetGain);
     osc.start(now);
     osc.stop(now + duration + decay + 0.02);
   }
 
-  const sfxShoot = () => tone(920, 0.045, 'square', 0.14, sfxGain, 0.001, 0.02);
-  const sfxPickup = () => { tone(740, 0.08, 'triangle', 0.12, sfxGain, 0.002, 0.05); tone(988, 0.09, 'triangle', 0.1, sfxGain, 0.004, 0.05); };
-  const sfxHit = () => tone(180, 0.1, 'sawtooth', 0.15, sfxGain, 0.001, 0.05);
-  function sfxBoom() {
+  function playShootSound() {
+    playTone(920, 0.045, 'square', 0.14, sfxGain, 0.001, 0.02);
+  }
+
+  function playPickupSound() {
+    playTone(740, 0.08, 'triangle', 0.12, sfxGain, 0.002, 0.05);
+    playTone(988, 0.09, 'triangle', 0.1, sfxGain, 0.004, 0.05);
+  }
+
+  function playHitSound() {
+    playTone(180, 0.1, 'sawtooth', 0.15, sfxGain, 0.001, 0.05);
+  }
+
+  function playExplosionSound() {
     if (!audioCtx || !sfxGain || audioCtx.state !== 'running') return;
     const now = audioCtx.currentTime;
     const osc = audioCtx.createOscillator();
@@ -122,54 +215,65 @@
   }
 
   function updateMusic(dt) {
-    if (!audioCtx || !musicGain || !world.running || audioCtx.state !== 'running') return;
-    musicTimer -= dt;
-    const beat = 0.18;
-    while (musicTimer <= 0) {
-      const m = melody[musicStep % melody.length];
-      const b = bass[musicStep % bass.length];
-      tone(m, beat * 0.52, 'triangle', 0.075, musicGain, 0.004, 0.07);
-      tone(b, beat * 0.78, 'sine', 0.062, musicGain, 0.005, 0.09);
-      musicStep += 1;
-      musicTimer += beat;
+    if (!audioCtx || !musicGain || !world.running) return;
+    musicState.timer -= dt;
+    const beat = Math.max(0.13, 0.21 - (world.speed - 170) * 0.00015);
+    while (musicState.timer <= 0) {
+      const m = musicState.melody[musicState.step % musicState.melody.length];
+      const b = musicState.bass[musicState.step % musicState.bass.length];
+      playTone(m, beat * 0.52, 'triangle', 0.075, musicGain, 0.004, 0.07);
+      playTone(b, beat * 0.78, 'sine', 0.062, musicGain, 0.005, 0.09);
+      musicState.step += 1;
+      musicState.timer += beat;
     }
   }
 
-  function defaultY() {
-    return clamp(vh * 0.24, 140, 300) / (scale() || 1);
+  function getScale() {
+    return Math.min(vw / world.width, 1.8);
   }
 
-  function reset() {
+  function defaultPlayerY() {
+    const scale = getScale() || 1;
+    return clamp(vh * 0.24, 140, 300) / scale;
+  }
+
+  function resetWorld() {
     world.scroll = 0;
     world.speed = 170;
+    world.targetSpeed = 170;
     world.score = 0;
-    world.lastSpawnY = 900;
+    world.lastSpawnY = 1000;
 
-    player.x = world.width * 0.5;
-    player.y = defaultY();
+    player.x = world.width / 2;
+    player.y = defaultPlayerY();
     player.hp = 3;
     player.fuel = 100;
-    player.cd = 0;
-    player.inv = 0;
+    player.cooldown = 0;
+    player.invuln = 0;
 
     bullets.length = 0;
     enemies.length = 0;
     pickups.length = 0;
     obstacles.length = 0;
+    blasts.length = 0;
     particles.length = 0;
-    musicTimer = 0;
-    musicStep = 0;
+    musicState.timer = 0;
+    musicState.step = 0;
 
     world.segments.length = 0;
-    let c = world.width * 0.5;
-    let w = 220;
+    let center = world.width / 2;
+    let width = 220;
     for (let i = 0; i < world.maxSeg; i++) {
-      c += rand(-30, 30);
-      w += rand(-22, 22);
-      w = clamp(w, 160, 260);
-      c = clamp(c, w / 2 + 12, world.width - w / 2 - 12);
-      world.segments.push({ center: c, width: w });
+      center += rand(-30, 30);
+      width += rand(-24, 24);
+      width = clamp(width, 150, 260);
+      center = clamp(center, width / 2 + 8, world.width - width / 2 - 8);
+      world.segments.push({ y: i * world.segStep, center, width });
     }
+
+    ui.score.textContent = '0';
+    ui.fuel.textContent = '100%';
+    ui.hp.textContent = '3';
   }
 
   function resize() {
@@ -179,44 +283,50 @@
     canvas.width = Math.floor(vw * dpr);
     canvas.height = Math.floor(vh * dpr);
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    player.y = defaultY();
+
+    player.y = defaultPlayerY();
   }
 
-  function riverAt(y) {
-    const i = Math.floor(y / world.segStep);
+  function getRiverAt(y) {
+    const step = world.segStep;
+    const i = Math.floor(y / step);
     const len = world.segments.length;
-    const a = world.segments[((i % len) + len) % len];
-    const b = world.segments[(((i + 1) % len) + len) % len];
-    const t = (y - i * world.segStep) / world.segStep;
+    const ai = ((i % len) + len) % len;
+    const bi = (((i + 1) % len) + len) % len;
+    const a = world.segments[ai];
+    const b = world.segments[bi];
+    const t = (y - i * step) / step;
     return {
       center: a.center + (b.center - a.center) * t,
       width: a.width + (b.width - a.width) * t
     };
   }
 
-  function spawn() {
+  function spawnEntities() {
     while (world.lastSpawnY < world.scroll + 2400) {
-      world.lastSpawnY += rand(220, 360);
-      const r = riverAt(world.lastSpawnY);
+      world.lastSpawnY += rand(200, 360);
+      const r = getRiverAt(world.lastSpawnY);
       const x = r.center + rand(-r.width * 0.35, r.width * 0.35);
-      const kind = Math.random();
-      if (kind < 0.56) {
+      const kindRoll = Math.random();
+
+      if (kindRoll < 0.55) {
         const enemyRoll = Math.random();
-        const heli = enemyRoll < 0.24;
-        const warship = enemyRoll > 0.82;
+        const isHeli = enemyRoll < 0.24;
+        const isWarship = enemyRoll > 0.82;
         enemies.push({
           x,
           y: world.lastSpawnY,
-          vx: warship ? rand(-12, 12) : rand(-25, 25),
-          hp: warship ? 4 : heli ? 2 : 1,
-          type: warship ? 'warship' : heli ? 'heli' : 'boat',
-          r: warship ? 23 : heli ? 18 : 14
+          vx: isWarship ? rand(-12, 12) : rand(-25, 25),
+          hp: isWarship ? 4 : isHeli ? 2 : 1,
+          type: isWarship ? 'warship' : isHeli ? 'heli' : 'boat',
+          r: isWarship ? 23 : isHeli ? 18 : 14
         });
-      } else if (kind < 0.78) {
+      } else if (kindRoll < 0.78) {
         pickups.push({ x, y: world.lastSpawnY, r: 14, pulse: rand(0, Math.PI * 2) });
       } else {
+        const ox = r.center + rand(-r.width * 0.28, r.width * 0.28);
         obstacles.push({
-          x: r.center + rand(-r.width * 0.28, r.width * 0.28),
+          x: ox,
           y: world.lastSpawnY,
           r: rand(20, 30),
           hp: 4,
@@ -226,73 +336,96 @@
     }
   }
 
-  function hitFx(x, y, n, color) {
-    for (let i = 0; i < n; i++) particles.push({ x, y, vx: rand(-120, 120), vy: rand(-120, 120), life: rand(0.25, 0.8), size: rand(2, 6), color });
+  function hitFx(x, y, count, color) {
+    for (let i = 0; i < count; i++) {
+      particles.push({
+        x,
+        y,
+        vx: rand(-120, 120),
+        vy: rand(-120, 120),
+        life: rand(0.25, 0.8),
+        size: rand(2, 6),
+        color
+      });
+    }
   }
 
-  function hurt() {
-    if (player.inv > 0) return;
+  function damagePlayer() {
+    if (player.invuln > 0) return;
     player.hp -= 1;
-    player.inv = 1.2;
-    sfxHit();
-    hitFx(player.x, world.scroll + player.y, 20, '#ff8e5e');
+    player.invuln = 1.25;
+    playHitSound();
+    hitFx(player.x, world.scroll + player.y, 24, '#ff9c62');
     if (player.hp <= 0) {
       world.running = false;
       ui.overlay.classList.remove('hidden');
       ui.overlay.querySelector('h1').textContent = 'Игра окончена';
-      ui.overlay.querySelector('p').textContent = `Счет: ${Math.floor(world.score)}. Нажми "Старт".`;
+      ui.overlay.querySelector('p').textContent = `Счет: ${Math.floor(world.score)}. Нажми "Старт" для новой попытки.`;
     }
   }
 
   function update(dt) {
+    animClock += dt;
     updateMusic(dt);
+    world.speed += (world.targetSpeed - world.speed) * dt * 2.2;
     world.scroll += world.speed * dt;
     world.score += dt * (18 + world.speed * 0.15);
-    player.fuel = Math.max(0, player.fuel - dt * 4.1);
+    player.fuel = Math.max(0, player.fuel - dt * 4.2);
+    if (player.fuel <= 0) {
+      world.targetSpeed = 90;
+      if (world.speed < 95) damagePlayer();
+    }
 
     const keyX = (keys.has('right') ? 1 : 0) - (keys.has('left') ? 1 : 0);
     const keyY = (keys.has('down') ? 1 : 0) - (keys.has('up') ? 1 : 0);
-    const moveX = touch.x || keyX;
-    const moveY = touch.y || keyY;
+    const moveX = controls.x || keyX;
+    const moveY = controls.y || keyY;
+    playerTilt = moveX;
 
-    player.x += moveX * 165 * dt;
+    const moveSpeed = 165;
+    player.x += moveX * moveSpeed * dt;
     player.y -= moveY * 100 * dt;
     player.y = clamp(player.y, 80, 360);
-    player.x = clamp(player.x, 20, world.width - 20);
 
-    player.cd = Math.max(0, player.cd - dt);
-    player.inv = Math.max(0, player.inv - dt);
+    player.cooldown = Math.max(0, player.cooldown - dt);
+    player.invuln = Math.max(0, player.invuln - dt);
 
-    if ((touch.fire || keys.has('fire')) && player.cd <= 0) {
-      player.cd = 0.12;
+    if ((controls.firing || keys.has('fire')) && player.cooldown <= 0) {
+      player.cooldown = 0.12;
       bullets.push({ x: player.x, y: world.scroll + player.y + 24, vy: 430, r: 4 });
-      sfxShoot();
+      playShootSound();
     }
 
-    const pr = riverAt(world.scroll + player.y);
-    const hw = pr.width / 2 - player.r;
-    if (player.x < pr.center - hw || player.x > pr.center + hw) hurt();
+    const r = getRiverAt(world.scroll + player.y);
+    const half = r.width / 2 - player.r;
+    if (player.x < r.center - half || player.x > r.center + half) {
+      damagePlayer();
+    }
+    player.x = clamp(player.x, 20, world.width - 20);
 
-    spawn();
+    spawnEntities();
 
-    const viewD = vh / scale();
+    const viewDepth = vh / getScale();
     for (let i = bullets.length - 1; i >= 0; i--) {
       const b = bullets[i];
       b.y += b.vy * dt;
-      if (b.y > world.scroll + viewD + 120) bullets.splice(i, 1);
+      if (b.y > world.scroll + viewDepth + 120) bullets.splice(i, 1);
     }
 
     for (let i = pickups.length - 1; i >= 0; i--) {
       const p = pickups[i];
       p.pulse += dt * 5;
-      if (p.y < world.scroll - 150) { pickups.splice(i, 1); continue; }
-      const dx = p.x - player.x;
+      if (p.y < world.scroll - 150) {
+        pickups.splice(i, 1);
+        continue;
+      }
       const dy = p.y - (world.scroll + player.y);
+      const dx = p.x - player.x;
       if (dx * dx + dy * dy < (p.r + player.r) ** 2) {
         player.fuel = Math.min(100, player.fuel + 32);
         world.score += 120;
-        sfxPickup();
-        hitFx(p.x, p.y, 14, '#9dfff0');
+        playPickupSound();
+        hitFx(p.x, p.y, 15, '#9dfff0');
         pickups.splice(i, 1);
       }
     }
@@ -300,25 +433,31 @@
     for (let i = obstacles.length - 1; i >= 0; i--) {
       const o = obstacles[i];
       o.pulse += dt * 2;
-      if (o.y < world.scroll - 180) { obstacles.splice(i, 1); continue; }
+      if (o.y < world.scroll - 180) {
+        obstacles.splice(i, 1);
+        continue;
+      }
+
       const dxp = o.x - player.x;
       const dyp = o.y - (world.scroll + player.y);
       if (dxp * dxp + dyp * dyp < (o.r + player.r) ** 2) {
-        hurt();
+        damagePlayer();
         hitFx(o.x, o.y, 14, '#e8d7a2');
       }
+
       for (let j = bullets.length - 1; j >= 0; j--) {
-        const bb = bullets[j];
-        const dx = o.x - bb.x;
-        const dy = o.y - bb.y;
-        if (dx * dx + dy * dy < (o.r + bb.r) ** 2) {
+        const b = bullets[j];
+        const dx = o.x - b.x;
+        const dy = o.y - b.y;
+        if (dx * dx + dy * dy < (o.r + b.r) ** 2) {
           bullets.splice(j, 1);
           o.hp -= 1;
-          hitFx(bb.x, bb.y, 10, '#fff1c6');
+          hitFx(b.x, b.y, 10, '#fff1c6');
           if (o.hp <= 0) {
             obstacles.splice(i, 1);
             world.score += 60;
-            sfxBoom();
+            playExplosionSound();
+            spawnBlast(o.x, o.y, 1.15);
             hitFx(o.x, o.y, 24, '#e3c78d');
           }
           break;
@@ -330,33 +469,38 @@
       const e = enemies[i];
       e.y += (e.type === 'heli' ? 50 : e.type === 'warship' ? 15 : 25) * dt;
       e.x += e.vx * dt;
-      const rr = riverAt(e.y);
-      const b = rr.width / 2 - (e.type === 'warship' ? 24 : 14);
-      if (e.x < rr.center - b || e.x > rr.center + b) e.vx *= -1;
-      if (e.y < world.scroll - 160) { enemies.splice(i, 1); continue; }
+      const rr = getRiverAt(e.y);
+      const bound = rr.width / 2 - (e.type === 'warship' ? 24 : 14);
+      if (e.x < rr.center - bound || e.x > rr.center + bound) e.vx *= -1;
+
+      if (e.y < world.scroll - 160) {
+        enemies.splice(i, 1);
+        continue;
+      }
 
       const dxp = e.x - player.x;
       const dyp = e.y - (world.scroll + player.y);
       if (dxp * dxp + dyp * dyp < (e.r + player.r) ** 2) {
         enemies.splice(i, 1);
-        hurt();
-        hitFx(e.x, e.y, 20, '#ff784f');
+        damagePlayer();
+        hitFx(e.x, e.y, 22, '#ff784f');
         continue;
       }
 
       for (let j = bullets.length - 1; j >= 0; j--) {
-        const bb = bullets[j];
-        const dx = e.x - bb.x;
-        const dy = e.y - bb.y;
-        if (dx * dx + dy * dy < (e.r + bb.r) ** 2) {
+        const b = bullets[j];
+        const dx = e.x - b.x;
+        const dy = e.y - b.y;
+        if (dx * dx + dy * dy < (e.r + b.r) ** 2) {
           bullets.splice(j, 1);
           e.hp -= 1;
-          hitFx(bb.x, bb.y, 8, '#ffe88b');
+          hitFx(b.x, b.y, 8, '#ffe88b');
           if (e.hp <= 0) {
             enemies.splice(i, 1);
             world.score += e.type === 'warship' ? 220 : 90;
-            sfxBoom();
-            hitFx(e.x, e.y, 18, '#ff885e');
+            playExplosionSound();
+            spawnBlast(e.x, e.y, e.type === 'warship' ? 1.35 : 1.0);
+            hitFx(e.x, e.y, 20, '#ff885e');
           }
           break;
         }
@@ -373,157 +517,288 @@
       if (p.life <= 0) particles.splice(i, 1);
     }
 
+    for (let i = blasts.length - 1; i >= 0; i--) {
+      const b = blasts[i];
+      b.age += dt;
+      if (b.age >= b.life) blasts.splice(i, 1);
+    }
+
     ui.score.textContent = Math.floor(world.score).toString();
     ui.fuel.textContent = `${Math.floor(player.fuel)}%`;
     ui.hp.textContent = player.hp.toString();
   }
 
-  function wx(x, s, l) { return l + x * s; }
-  function wy(y, s) { return vh - (y - world.scroll) * s; }
-  function sy(y, s) { return world.scroll + (vh - y) / s; }
+  function worldToScreenX(x, scale, left) {
+    return left + x * scale;
+  }
 
-  function drawBg(s, l) {
-    const g = ctx.createLinearGradient(0, 0, 0, vh);
-    g.addColorStop(0, '#062037');
-    g.addColorStop(0.45, '#0b3654');
-    g.addColorStop(1, '#0f4f72');
-    ctx.fillStyle = g;
+  function worldToScreenY(y, scale) {
+    return vh - (y - world.scroll) * scale;
+  }
+
+  function screenToWorldY(y, scale) {
+    return world.scroll + (vh - y) / scale;
+  }
+
+  function drawBackground(scale, left) {
+    const sky = ctx.createLinearGradient(0, 0, 0, vh);
+    sky.addColorStop(0, '#062037');
+    sky.addColorStop(0.45, '#0b3654');
+    sky.addColorStop(1, '#0f4f72');
+    ctx.fillStyle = sky;
     ctx.fillRect(0, 0, vw, vh);
+
+    for (let i = 0; i < 18; i++) {
+      const y = (i * 180 + (world.scroll * 0.2) % 1800) % 1800 - 120;
+      const x = ((i * 191) % 700) / 700 * vw;
+      ctx.fillStyle = 'rgba(255,255,255,0.09)';
+      ctx.beginPath();
+      ctx.ellipse(x, y, 70, 18, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
 
     ctx.save();
     ctx.beginPath();
-    for (let py = -30; py <= vh + 40; py += 14) {
-      const r = riverAt(sy(py, s));
-      const x = wx(r.center, s, l);
-      const hw = (r.width * s) * 0.5;
-      if (py === -30) ctx.moveTo(x - hw, py); else ctx.lineTo(x - hw, py);
+    for (let sy = -30; sy <= vh + 40; sy += 14) {
+      const wy = screenToWorldY(sy, scale);
+      const r = getRiverAt(wy);
+      const x = worldToScreenX(r.center, scale, left);
+      const hw = (r.width * scale) / 2;
+      if (sy === -30) ctx.moveTo(x - hw, sy);
+      else ctx.lineTo(x - hw, sy);
     }
-    for (let py = vh + 40; py >= -30; py -= 14) {
-      const r = riverAt(sy(py, s));
-      const x = wx(r.center, s, l);
-      const hw = (r.width * s) * 0.5;
-      ctx.lineTo(x + hw, py);
+    for (let sy = vh + 40; sy >= -30; sy -= 14) {
+      const wy = screenToWorldY(sy, scale);
+      const r = getRiverAt(wy);
+      const x = worldToScreenX(r.center, scale, left);
+      const hw = (r.width * scale) / 2;
+      ctx.lineTo(x + hw, sy);
     }
     ctx.closePath();
 
-    const w = ctx.createLinearGradient(0, 0, 0, vh);
-    w.addColorStop(0, '#0fb9f8');
-    w.addColorStop(0.35, '#0689ce');
-    w.addColorStop(1, '#035a9b');
-    ctx.fillStyle = w;
+    const water = ctx.createLinearGradient(0, 0, 0, vh);
+    water.addColorStop(0, '#0fb9f8');
+    water.addColorStop(0.35, '#0689ce');
+    water.addColorStop(1, '#035a9b');
+    ctx.fillStyle = water;
     ctx.fill();
+
+    ctx.clip();
+    for (let i = 0; i < 42; i++) {
+      const y = (i * 64 + (world.scroll * 2.3) % 1200) % 1200 - 100;
+      ctx.strokeStyle = `rgba(197,238,255,${0.06 + (i % 6) * 0.015})`;
+      ctx.lineWidth = 1.4;
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.quadraticCurveTo(vw * 0.5, y + (i % 2 ? 5 : -5), vw, y);
+      ctx.stroke();
+    }
+
     ctx.restore();
+
+    ctx.strokeStyle = 'rgba(177, 242, 255, 0.55)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    for (let sy = -30; sy <= vh + 40; sy += 14) {
+      const wy = screenToWorldY(sy, scale);
+      const r = getRiverAt(wy);
+      const x = worldToScreenX(r.center, scale, left);
+      const hw = (r.width * scale) / 2;
+      if (sy === -30) ctx.moveTo(x - hw, sy);
+      else ctx.lineTo(x - hw, sy);
+    }
+    ctx.stroke();
+
+    ctx.beginPath();
+    for (let sy = -30; sy <= vh + 40; sy += 14) {
+      const wy = screenToWorldY(sy, scale);
+      const r = getRiverAt(wy);
+      const x = worldToScreenX(r.center, scale, left);
+      const hw = (r.width * scale) / 2;
+      if (sy === -30) ctx.moveTo(x + hw, sy);
+      else ctx.lineTo(x + hw, sy);
+    }
+    ctx.stroke();
   }
 
-  function draw() {
-    const s = scale();
-    const l = (vw - world.width * s) * 0.5;
-    drawBg(s, l);
+  function drawPlayer(scale, left) {
+    const x = worldToScreenX(player.x, scale, left);
+    const y = vh - player.y * scale;
 
-    pickups.forEach((p) => {
-      const x = wx(p.x, s, l);
-      const y = wy(p.y, s);
-      const r = (10 + Math.sin(p.pulse) * 2.4) * s;
-      ctx.fillStyle = 'rgba(160,255,220,0.28)';
-      ctx.beginPath(); ctx.arc(x, y, r * 1.7, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = '#a9ffe0';
-      ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
-    });
+    if (player.invuln > 0 && Math.floor(player.invuln * 14) % 2 === 0) return;
+    const w = 44 * scale;
+    const h = 44 * scale;
+    drawSprite(assets.plane, x, y, w, h, playerTilt * 0.3);
 
-    obstacles.forEach((o) => {
-      const x = wx(o.x, s, l);
-      const y = wy(o.y, s);
-      const wobble = Math.sin(o.pulse) * 1.8;
-      const rad = o.r * s;
-      ctx.fillStyle = 'rgba(36, 58, 31, 0.45)'; ctx.beginPath(); ctx.ellipse(x + 2 * s, y + 4 * s, rad * 0.95, rad * 0.55, 0, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = '#8b9b58'; ctx.beginPath(); ctx.ellipse(x, y + wobble, rad, rad * 0.62, 0.1, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = '#5a6c35'; ctx.beginPath(); ctx.ellipse(x - 6 * s, y + wobble - 2 * s, rad * 0.33, rad * 0.2, 0, 0, Math.PI * 2); ctx.fill();
-    });
+    const flameSize = (9 + Math.sin(animClock * 45) * 2.2) * scale;
+    ctx.fillStyle = 'rgba(255,152,88,0.8)';
+    ctx.beginPath();
+    ctx.ellipse(x, y + 16 * scale, flameSize * 0.6, flameSize, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
 
+  function drawEnemies(scale, left) {
     enemies.forEach((e) => {
-      const x = wx(e.x, s, l);
-      const y = wy(e.y, s);
+      const sy = worldToScreenY(e.y, scale);
+      if (sy < -80 || sy > vh + 80) return;
+      const sx = worldToScreenX(e.x, scale, left);
       if (e.type === 'heli') {
-        ctx.fillStyle = '#f5d86e'; ctx.fillRect(x - 16 * s, y - 6 * s, 32 * s, 12 * s);
-        ctx.strokeStyle = '#d8eefb'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(x - 20 * s, y - 17 * s); ctx.lineTo(x + 20 * s, y - 17 * s); ctx.stroke();
+        drawSprite(assets.heliBody, sx, sy, 42 * scale, 42 * scale, 0);
+        drawSprite(assets.heliRotor, sx, sy - 10 * scale, 46 * scale, 46 * scale, animClock * 20);
       } else if (e.type === 'warship') {
-        ctx.fillStyle = '#495867'; ctx.fillRect(x - 24 * s, y - 10 * s, 48 * s, 20 * s);
-        ctx.fillStyle = '#30404d'; ctx.fillRect(x - 10 * s, y - 18 * s, 20 * s, 8 * s);
-        ctx.fillStyle = '#ff6a3d'; ctx.fillRect(x - 3 * s, y - 2 * s, 6 * s, 8 * s);
+        drawSprite(assets.warship, sx, sy + Math.sin(animClock * 2 + e.x) * 1.5 * scale, 60 * scale, 44 * scale, 0);
       } else {
-        ctx.fillStyle = '#6e7d8f';
-        ctx.beginPath(); ctx.moveTo(x, y - 12 * s); ctx.lineTo(x + 11 * s, y + 12 * s); ctx.lineTo(x - 11 * s, y + 12 * s); ctx.closePath(); ctx.fill();
+        drawSprite(assets.boat, sx, sy + Math.sin(animClock * 3 + e.x) * scale, 40 * scale, 34 * scale, e.vx * 0.004);
       }
     });
+  }
 
+  function drawPickups(scale, left) {
+    pickups.forEach((p) => {
+      const sy = worldToScreenY(p.y, scale);
+      if (sy < -40 || sy > vh + 40) return;
+      const sx = worldToScreenX(p.x, scale, left);
+      const bob = Math.sin(p.pulse) * 3 * scale;
+      const glow = 16 + Math.sin(p.pulse * 1.2) * 3;
+      ctx.fillStyle = 'rgba(160,255,220,0.22)';
+      ctx.beginPath();
+      ctx.arc(sx, sy, glow * scale, 0, Math.PI * 2);
+      ctx.fill();
+      drawSprite(assets.fuel, sx, sy + bob, 30 * scale, 30 * scale, 0);
+    });
+  }
+
+  function drawObstacles(scale, left) {
+    obstacles.forEach((o) => {
+      const sy = worldToScreenY(o.y, scale);
+      if (sy < -60 || sy > vh + 60) return;
+      const sx = worldToScreenX(o.x, scale, left);
+      const wobble = Math.sin(o.pulse) * 2 * scale;
+      const size = o.r * 2.2 * scale;
+      drawSprite(assets.island, sx, sy + wobble, size, size * 0.85, 0);
+    });
+  }
+
+  function drawBullets(scale, left) {
     ctx.fillStyle = '#ffe4ad';
-    bullets.forEach((b) => { const x = wx(b.x, s, l); const y = wy(b.y, s); ctx.beginPath(); ctx.arc(x, y, 2.8 * s, 0, Math.PI * 2); ctx.fill(); });
+    bullets.forEach((b) => {
+      const sy = worldToScreenY(b.y, scale);
+      if (sy < -20 || sy > vh + 20) return;
+      const sx = worldToScreenX(b.x, scale, left);
+      ctx.beginPath();
+      ctx.arc(sx, sy, 2.8 * scale, 0, Math.PI * 2);
+      ctx.fill();
+    });
+  }
 
+  function drawParticles(scale, left) {
     particles.forEach((p) => {
-      const x = wx(p.x, s, l);
-      const y = wy(p.y, s);
+      const sy = worldToScreenY(p.y, scale);
+      if (sy < -40 || sy > vh + 40) return;
+      const sx = worldToScreenX(p.x, scale, left);
       ctx.fillStyle = p.color;
       ctx.globalAlpha = Math.max(0, p.life * 1.2);
-      ctx.beginPath(); ctx.arc(x, y, p.size * s * Math.max(0.4, p.life), 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath();
+      ctx.arc(sx, sy, p.size * scale * Math.max(0.4, p.life), 0, Math.PI * 2);
+      ctx.fill();
       ctx.globalAlpha = 1;
     });
+  }
 
-    const px = wx(player.x, s, l);
-    const py = vh - player.y * s;
-    if (!(player.inv > 0 && Math.floor(player.inv * 14) % 2 === 0)) {
-      ctx.fillStyle = '#eef7ff';
-      ctx.beginPath();
-      ctx.moveTo(px, py - 20 * s);
-      ctx.lineTo(px + 16 * s, py + 16 * s);
-      ctx.lineTo(px, py + 8 * s);
-      ctx.lineTo(px - 16 * s, py + 16 * s);
-      ctx.closePath();
-      ctx.fill();
-    }
+  function drawBlasts(scale, left) {
+    const frames = [assets.boom1, assets.boom2, assets.boom3, assets.boom4];
+    blasts.forEach((b) => {
+      const sy = worldToScreenY(b.y, scale);
+      if (sy < -90 || sy > vh + 90) return;
+      const sx = worldToScreenX(b.x, scale, left);
+      const t = clamp(b.age / b.life, 0, 0.999);
+      const frameIndex = Math.min(frames.length - 1, Math.floor(t * frames.length));
+      const size = (46 + t * 54) * b.size * scale;
+      drawSprite(frames[frameIndex], sx, sy, size, size, 0, 1 - t * 0.3);
+    });
+  }
+
+  function render() {
+    const scale = Math.min(vw / world.width, 1.8);
+    const left = (vw - world.width * scale) * 0.5;
+
+    drawBackground(scale, left);
+    drawObstacles(scale, left);
+    drawPickups(scale, left);
+    drawEnemies(scale, left);
+    drawBullets(scale, left);
+    drawBlasts(scale, left);
+    drawParticles(scale, left);
+    drawPlayer(scale, left);
   }
 
   function loop(ts) {
-    const dt = Math.min(0.035, (ts - last) / 1000 || 0.016);
-    last = ts;
+    const dt = Math.min(0.035, (ts - lastTime) / 1000 || 0.016);
+    lastTime = ts;
+
     if (world.running) update(dt);
-    draw();
+    render();
+
     requestAnimationFrame(loop);
   }
 
   function setStick(clientX, clientY) {
-    const r = stickZone.getBoundingClientRect();
-    const cx = r.left + r.width / 2;
-    const cy = r.top + r.height / 2;
+    const rect = stickZone.getBoundingClientRect();
+    const cx = rect.left + rect.width / 2;
+    const cy = rect.top + rect.height / 2;
     let dx = clientX - cx;
     let dy = clientY - cy;
-    const max = r.width * 0.32;
+    const max = rect.width * 0.32;
     const len = Math.hypot(dx, dy);
-    if (len > max) { dx = (dx / len) * max; dy = (dy / len) * max; }
-    touch.x = dx / max;
-    touch.y = dy / max;
+    if (len > max) {
+      dx = (dx / len) * max;
+      dy = (dy / len) * max;
+    }
+    controls.x = dx / max;
+    controls.y = dy / max;
     stick.style.left = `${32 + dx}px`;
     stick.style.top = `${32 + dy}px`;
   }
 
   function clearStick() {
-    touch.x = 0;
-    touch.y = 0;
+    controls.x = 0;
+    controls.y = 0;
     stick.style.left = '32px';
     stick.style.top = '32px';
   }
 
   stickZone.addEventListener('pointerdown', (e) => {
-    touch.pid = e.pointerId;
+    controls.pointerId = e.pointerId;
     stickZone.setPointerCapture(e.pointerId);
     setStick(e.clientX, e.clientY);
   });
-  stickZone.addEventListener('pointermove', (e) => { if (e.pointerId === touch.pid) setStick(e.clientX, e.clientY); });
-  stickZone.addEventListener('pointerup', (e) => { if (e.pointerId === touch.pid) { touch.pid = null; clearStick(); } });
-  stickZone.addEventListener('pointercancel', () => { touch.pid = null; clearStick(); });
 
-  fireBtn.addEventListener('pointerdown', () => { touch.fire = true; });
-  fireBtn.addEventListener('pointerup', () => { touch.fire = false; });
-  fireBtn.addEventListener('pointercancel', () => { touch.fire = false; });
+  stickZone.addEventListener('pointermove', (e) => {
+    if (controls.pointerId !== e.pointerId) return;
+    setStick(e.clientX, e.clientY);
+  });
+
+  stickZone.addEventListener('pointerup', (e) => {
+    if (controls.pointerId !== e.pointerId) return;
+    controls.pointerId = null;
+    clearStick();
+  });
+
+  stickZone.addEventListener('pointercancel', () => {
+    controls.pointerId = null;
+    clearStick();
+  });
+
+  fireBtn.addEventListener('pointerdown', () => {
+    ensureAudio();
+    controls.firing = true;
+  });
+  fireBtn.addEventListener('pointerup', () => {
+    controls.firing = false;
+  });
+  fireBtn.addEventListener('pointercancel', () => {
+    controls.firing = false;
+  });
 
   window.addEventListener('keydown', (e) => {
     ensureAudio();
@@ -553,19 +828,28 @@
   });
 
   ui.start.addEventListener('click', () => {
+    if (!assetState.ready) {
+      ui.overlay.querySelector('p').textContent = 'Загружаю графику... попробуй через 1-2 секунды.';
+      return;
+    }
     ensureAudio();
-    sfxPickup();
+    playPickupSound();
     ui.overlay.classList.add('hidden');
     ui.overlay.querySelector('h1').textContent = 'River Strike';
     ui.overlay.querySelector('p').textContent = 'Веди истребитель по реке, уничтожай цели и собирай топливо.';
-    reset();
+    resetWorld();
     world.running = true;
   });
 
   window.addEventListener('resize', resize);
   window.addEventListener('pointerdown', ensureAudio, { passive: true });
   window.addEventListener('touchstart', ensureAudio, { passive: true });
+
   resize();
-  reset();
+  resetWorld();
+  ui.overlay.querySelector('p').textContent = 'Загружаю графику...';
+  loadAssets().catch(() => {
+    ui.overlay.querySelector('p').textContent = 'Ошибка загрузки графики. Обнови страницу.';
+  });
   requestAnimationFrame(loop);
 })();
