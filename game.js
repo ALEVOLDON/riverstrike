@@ -43,6 +43,7 @@
   const bullets = [];
   const enemies = [];
   const pickups = [];
+  const obstacles = [];
   const particles = [];
 
   let vw = 0;
@@ -154,6 +155,7 @@
     bullets.length = 0;
     enemies.length = 0;
     pickups.length = 0;
+    obstacles.length = 0;
     particles.length = 0;
     musicTimer = 0;
     musicStep = 0;
@@ -197,11 +199,29 @@
       world.lastSpawnY += rand(220, 360);
       const r = riverAt(world.lastSpawnY);
       const x = r.center + rand(-r.width * 0.35, r.width * 0.35);
-      if (Math.random() < 0.74) {
-        const heli = Math.random() < 0.25;
-        enemies.push({ x, y: world.lastSpawnY, vx: rand(-25, 25), hp: heli ? 2 : 1, type: heli ? 'heli' : 'boat', r: heli ? 18 : 14 });
-      } else {
+      const kind = Math.random();
+      if (kind < 0.56) {
+        const enemyRoll = Math.random();
+        const heli = enemyRoll < 0.24;
+        const warship = enemyRoll > 0.82;
+        enemies.push({
+          x,
+          y: world.lastSpawnY,
+          vx: warship ? rand(-12, 12) : rand(-25, 25),
+          hp: warship ? 4 : heli ? 2 : 1,
+          type: warship ? 'warship' : heli ? 'heli' : 'boat',
+          r: warship ? 23 : heli ? 18 : 14
+        });
+      } else if (kind < 0.78) {
         pickups.push({ x, y: world.lastSpawnY, r: 14, pulse: rand(0, Math.PI * 2) });
+      } else {
+        obstacles.push({
+          x: r.center + rand(-r.width * 0.28, r.width * 0.28),
+          y: world.lastSpawnY,
+          r: rand(20, 30),
+          hp: 4,
+          pulse: rand(0, Math.PI * 2)
+        });
       }
     }
   }
@@ -277,12 +297,41 @@
       }
     }
 
+    for (let i = obstacles.length - 1; i >= 0; i--) {
+      const o = obstacles[i];
+      o.pulse += dt * 2;
+      if (o.y < world.scroll - 180) { obstacles.splice(i, 1); continue; }
+      const dxp = o.x - player.x;
+      const dyp = o.y - (world.scroll + player.y);
+      if (dxp * dxp + dyp * dyp < (o.r + player.r) ** 2) {
+        hurt();
+        hitFx(o.x, o.y, 14, '#e8d7a2');
+      }
+      for (let j = bullets.length - 1; j >= 0; j--) {
+        const bb = bullets[j];
+        const dx = o.x - bb.x;
+        const dy = o.y - bb.y;
+        if (dx * dx + dy * dy < (o.r + bb.r) ** 2) {
+          bullets.splice(j, 1);
+          o.hp -= 1;
+          hitFx(bb.x, bb.y, 10, '#fff1c6');
+          if (o.hp <= 0) {
+            obstacles.splice(i, 1);
+            world.score += 60;
+            sfxBoom();
+            hitFx(o.x, o.y, 24, '#e3c78d');
+          }
+          break;
+        }
+      }
+    }
+
     for (let i = enemies.length - 1; i >= 0; i--) {
       const e = enemies[i];
-      e.y += (e.type === 'heli' ? 50 : 25) * dt;
+      e.y += (e.type === 'heli' ? 50 : e.type === 'warship' ? 15 : 25) * dt;
       e.x += e.vx * dt;
       const rr = riverAt(e.y);
-      const b = rr.width / 2 - 14;
+      const b = rr.width / 2 - (e.type === 'warship' ? 24 : 14);
       if (e.x < rr.center - b || e.x > rr.center + b) e.vx *= -1;
       if (e.y < world.scroll - 160) { enemies.splice(i, 1); continue; }
 
@@ -305,7 +354,7 @@
           hitFx(bb.x, bb.y, 8, '#ffe88b');
           if (e.hp <= 0) {
             enemies.splice(i, 1);
-            world.score += 90;
+            world.score += e.type === 'warship' ? 220 : 90;
             sfxBoom();
             hitFx(e.x, e.y, 18, '#ff885e');
           }
@@ -381,12 +430,26 @@
       ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
     });
 
+    obstacles.forEach((o) => {
+      const x = wx(o.x, s, l);
+      const y = wy(o.y, s);
+      const wobble = Math.sin(o.pulse) * 1.8;
+      const rad = o.r * s;
+      ctx.fillStyle = 'rgba(36, 58, 31, 0.45)'; ctx.beginPath(); ctx.ellipse(x + 2 * s, y + 4 * s, rad * 0.95, rad * 0.55, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#8b9b58'; ctx.beginPath(); ctx.ellipse(x, y + wobble, rad, rad * 0.62, 0.1, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#5a6c35'; ctx.beginPath(); ctx.ellipse(x - 6 * s, y + wobble - 2 * s, rad * 0.33, rad * 0.2, 0, 0, Math.PI * 2); ctx.fill();
+    });
+
     enemies.forEach((e) => {
       const x = wx(e.x, s, l);
       const y = wy(e.y, s);
       if (e.type === 'heli') {
         ctx.fillStyle = '#f5d86e'; ctx.fillRect(x - 16 * s, y - 6 * s, 32 * s, 12 * s);
         ctx.strokeStyle = '#d8eefb'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(x - 20 * s, y - 17 * s); ctx.lineTo(x + 20 * s, y - 17 * s); ctx.stroke();
+      } else if (e.type === 'warship') {
+        ctx.fillStyle = '#495867'; ctx.fillRect(x - 24 * s, y - 10 * s, 48 * s, 20 * s);
+        ctx.fillStyle = '#30404d'; ctx.fillRect(x - 10 * s, y - 18 * s, 20 * s, 8 * s);
+        ctx.fillStyle = '#ff6a3d'; ctx.fillRect(x - 3 * s, y - 2 * s, 6 * s, 8 * s);
       } else {
         ctx.fillStyle = '#6e7d8f';
         ctx.beginPath(); ctx.moveTo(x, y - 12 * s); ctx.lineTo(x + 11 * s, y + 12 * s); ctx.lineTo(x - 11 * s, y + 12 * s); ctx.closePath(); ctx.fill();
