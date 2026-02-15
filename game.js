@@ -49,10 +49,90 @@
   let vh = 0;
   let dpr = 1;
   let last = 0;
+  let audioCtx = null;
+  let masterGain = null;
+  let musicGain = null;
+  let sfxGain = null;
+  let musicTimer = 0;
+  let musicStep = 0;
+  const melody = [523.25, 659.25, 783.99, 659.25, 587.33, 659.25, 698.46, 659.25];
+  const bass = [130.81, 146.83, 164.81, 146.83];
 
   const rand = (a, b) => Math.random() * (b - a) + a;
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
   const scale = () => Math.min(vw / world.width, 1.8);
+
+  function initAudio() {
+    if (audioCtx) return;
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if (!Ctx) return;
+    audioCtx = new Ctx();
+    masterGain = audioCtx.createGain();
+    musicGain = audioCtx.createGain();
+    sfxGain = audioCtx.createGain();
+    masterGain.gain.value = 1.0;
+    musicGain.gain.value = 0.9;
+    sfxGain.gain.value = 1.3;
+    musicGain.connect(masterGain);
+    sfxGain.connect(masterGain);
+    masterGain.connect(audioCtx.destination);
+  }
+
+  function ensureAudio() {
+    initAudio();
+    if (!audioCtx) return;
+    if (audioCtx.state !== 'running') audioCtx.resume().catch(() => {});
+  }
+
+  function tone(freq, duration, type, gainValue, out, attack = 0.004, decay = 0.08) {
+    if (!audioCtx || !out || audioCtx.state !== 'running') return;
+    const now = audioCtx.currentTime;
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = type;
+    osc.frequency.setValueAtTime(freq, now);
+    gain.gain.setValueAtTime(0, now);
+    gain.gain.linearRampToValueAtTime(gainValue, now + attack);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + duration + decay);
+    osc.connect(gain);
+    gain.connect(out);
+    osc.start(now);
+    osc.stop(now + duration + decay + 0.02);
+  }
+
+  const sfxShoot = () => tone(920, 0.045, 'square', 0.14, sfxGain, 0.001, 0.02);
+  const sfxPickup = () => { tone(740, 0.08, 'triangle', 0.12, sfxGain, 0.002, 0.05); tone(988, 0.09, 'triangle', 0.1, sfxGain, 0.004, 0.05); };
+  const sfxHit = () => tone(180, 0.1, 'sawtooth', 0.15, sfxGain, 0.001, 0.05);
+  function sfxBoom() {
+    if (!audioCtx || !sfxGain || audioCtx.state !== 'running') return;
+    const now = audioCtx.currentTime;
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(240, now);
+    osc.frequency.exponentialRampToValueAtTime(55, now + 0.24);
+    gain.gain.setValueAtTime(0.0001, now);
+    gain.gain.linearRampToValueAtTime(0.2, now + 0.01);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.28);
+    osc.connect(gain);
+    gain.connect(sfxGain);
+    osc.start(now);
+    osc.stop(now + 0.3);
+  }
+
+  function updateMusic(dt) {
+    if (!audioCtx || !musicGain || !world.running || audioCtx.state !== 'running') return;
+    musicTimer -= dt;
+    const beat = 0.18;
+    while (musicTimer <= 0) {
+      const m = melody[musicStep % melody.length];
+      const b = bass[musicStep % bass.length];
+      tone(m, beat * 0.52, 'triangle', 0.075, musicGain, 0.004, 0.07);
+      tone(b, beat * 0.78, 'sine', 0.062, musicGain, 0.005, 0.09);
+      musicStep += 1;
+      musicTimer += beat;
+    }
+  }
 
   function defaultY() {
     return clamp(vh * 0.24, 140, 300) / (scale() || 1);
@@ -75,6 +155,8 @@
     enemies.length = 0;
     pickups.length = 0;
     particles.length = 0;
+    musicTimer = 0;
+    musicStep = 0;
 
     world.segments.length = 0;
     let c = world.width * 0.5;
@@ -132,6 +214,7 @@
     if (player.inv > 0) return;
     player.hp -= 1;
     player.inv = 1.2;
+    sfxHit();
     hitFx(player.x, world.scroll + player.y, 20, '#ff8e5e');
     if (player.hp <= 0) {
       world.running = false;
@@ -142,6 +225,7 @@
   }
 
   function update(dt) {
+    updateMusic(dt);
     world.scroll += world.speed * dt;
     world.score += dt * (18 + world.speed * 0.15);
     player.fuel = Math.max(0, player.fuel - dt * 4.1);
@@ -162,6 +246,7 @@
     if ((touch.fire || keys.has('fire')) && player.cd <= 0) {
       player.cd = 0.12;
       bullets.push({ x: player.x, y: world.scroll + player.y + 24, vy: 430, r: 4 });
+      sfxShoot();
     }
 
     const pr = riverAt(world.scroll + player.y);
@@ -186,6 +271,7 @@
       if (dx * dx + dy * dy < (p.r + player.r) ** 2) {
         player.fuel = Math.min(100, player.fuel + 32);
         world.score += 120;
+        sfxPickup();
         hitFx(p.x, p.y, 14, '#9dfff0');
         pickups.splice(i, 1);
       }
@@ -220,6 +306,7 @@
           if (e.hp <= 0) {
             enemies.splice(i, 1);
             world.score += 90;
+            sfxBoom();
             hitFx(e.x, e.y, 18, '#ff885e');
           }
           break;
@@ -376,6 +463,7 @@
   fireBtn.addEventListener('pointercancel', () => { touch.fire = false; });
 
   window.addEventListener('keydown', (e) => {
+    ensureAudio();
     const dir = keyMap[e.code];
     if (dir) {
       keys.add(dir);
@@ -402,6 +490,8 @@
   });
 
   ui.start.addEventListener('click', () => {
+    ensureAudio();
+    sfxPickup();
     ui.overlay.classList.add('hidden');
     ui.overlay.querySelector('h1').textContent = 'River Strike';
     ui.overlay.querySelector('p').textContent = 'Веди истребитель по реке, уничтожай цели и собирай топливо.';
@@ -410,6 +500,8 @@
   });
 
   window.addEventListener('resize', resize);
+  window.addEventListener('pointerdown', ensureAudio, { passive: true });
+  window.addEventListener('touchstart', ensureAudio, { passive: true });
   resize();
   reset();
   requestAnimationFrame(loop);
