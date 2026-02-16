@@ -104,6 +104,11 @@
     return Math.max(min, Math.min(max, v));
   }
 
+  function hash01(n) {
+    const x = Math.sin(n * 127.1 + 311.7) * 43758.5453123;
+    return x - Math.floor(x);
+  }
+
   function loadImage(src) {
     return new Promise((resolve, reject) => {
       const img = new Image();
@@ -661,6 +666,152 @@
       else ctx.lineTo(x + hw, sy);
     }
     ctx.stroke();
+
+    drawBanksAndBuildings(scale, left);
+  }
+
+  function drawBanksAndBuildings(scale, left) {
+    const step = 16;
+    const leftBank = [];
+    const rightBank = [];
+
+    for (let sy = -30; sy <= vh + 40; sy += step) {
+      const wy = screenToWorldY(sy, scale);
+      const r = getRiverAt(wy);
+      const centerX = worldToScreenX(r.center, scale, left);
+      const halfW = (r.width * scale) * 0.5;
+      leftBank.push({ sy, x: centerX - halfW, wy });
+      rightBank.push({ sy, x: centerX + halfW, wy });
+    }
+
+    const landGradLeft = ctx.createLinearGradient(0, 0, vw * 0.34, 0);
+    landGradLeft.addColorStop(0, '#314e2f');
+    landGradLeft.addColorStop(1, '#6f8c43');
+    ctx.fillStyle = landGradLeft;
+    ctx.beginPath();
+    ctx.moveTo(0, -40);
+    for (let i = 0; i < leftBank.length; i++) {
+      ctx.lineTo(leftBank[i].x, leftBank[i].sy);
+    }
+    ctx.lineTo(0, vh + 40);
+    ctx.closePath();
+    ctx.fill();
+
+    const landGradRight = ctx.createLinearGradient(vw, 0, vw * 0.66, 0);
+    landGradRight.addColorStop(0, '#2f4b2c');
+    landGradRight.addColorStop(1, '#6a8842');
+    ctx.fillStyle = landGradRight;
+    ctx.beginPath();
+    ctx.moveTo(vw, -40);
+    for (let i = 0; i < rightBank.length; i++) {
+      ctx.lineTo(rightBank[i].x, rightBank[i].sy);
+    }
+    ctx.lineTo(vw, vh + 40);
+    ctx.closePath();
+    ctx.fill();
+
+    for (let i = 0; i < leftBank.length; i++) {
+      const b = leftBank[i];
+      ctx.strokeStyle = `rgba(32, 58, 28, ${0.15 + (i % 4) * 0.04})`;
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      ctx.moveTo(0, b.sy + 2);
+      ctx.lineTo(b.x - 4, b.sy + (i % 2 ? -2 : 2));
+      ctx.stroke();
+    }
+
+    for (let i = 0; i < rightBank.length; i++) {
+      const b = rightBank[i];
+      ctx.strokeStyle = `rgba(32, 58, 28, ${0.15 + (i % 4) * 0.04})`;
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      ctx.moveTo(vw, b.sy + 2);
+      ctx.lineTo(b.x + 4, b.sy + (i % 2 ? -2 : 2));
+      ctx.stroke();
+    }
+
+    const firstWy = screenToWorldY(vh + 60, scale);
+    const lastWy = screenToWorldY(-120, scale);
+    const blockStep = 190;
+    const start = Math.floor(lastWy / blockStep) * blockStep - blockStep;
+    const end = Math.ceil(firstWy / blockStep) * blockStep + blockStep;
+
+    for (let wy = start; wy <= end; wy += blockStep) {
+      const slot = Math.floor(wy / blockStep);
+      const rnd = hash01(slot * 1.17);
+      if (rnd < 0.18) continue;
+      const r = getRiverAt(wy);
+      const sy = worldToScreenY(wy, scale);
+      if (sy < -160 || sy > vh + 160) continue;
+
+      const baseW = (16 + hash01(slot * 2.31) * 20) * scale;
+      const baseH = (24 + hash01(slot * 3.19) * 54) * scale;
+      const roof = (3 + hash01(slot * 4.91) * 5) * scale;
+      const colorTone = 36 + Math.floor(hash01(slot * 6.77) * 35);
+      const bodyColor = `rgb(${colorTone}, ${colorTone + 12}, ${colorTone + 18})`;
+      const windowOn = hash01(slot * 7.13) > 0.43;
+
+      const leftEdge = worldToScreenX(r.center - r.width * 0.5, scale, left);
+      const rightEdge = worldToScreenX(r.center + r.width * 0.5, scale, left);
+
+      if (hash01(slot * 5.73) > 0.5) {
+        const bx = leftEdge - (12 + baseW * 0.55 + hash01(slot * 8.02) * 16 * scale);
+        const by = sy - baseH;
+        ctx.fillStyle = bodyColor;
+        ctx.fillRect(bx, by, baseW, baseH);
+        ctx.fillStyle = '#9ca7af';
+        ctx.beginPath();
+        ctx.moveTo(bx - roof, by);
+        ctx.lineTo(bx + baseW + roof, by);
+        ctx.lineTo(bx + baseW * 0.5, by - roof * 1.8);
+        ctx.closePath();
+        ctx.fill();
+        if (windowOn) {
+          ctx.fillStyle = 'rgba(255, 214, 136, 0.72)';
+          const cols = Math.max(1, Math.floor(baseW / (6 * scale)));
+          const rows = Math.max(1, Math.floor(baseH / (10 * scale)));
+          for (let cx = 0; cx < cols; cx++) {
+            for (let cy = 0; cy < rows; cy++) {
+              if (hash01(slot * 11.9 + cx * 1.7 + cy * 2.3) > 0.63) continue;
+              ctx.fillRect(
+                bx + 2 * scale + cx * 6 * scale,
+                by + 3 * scale + cy * 10 * scale,
+                2.5 * scale,
+                4 * scale
+              );
+            }
+          }
+        }
+      } else {
+        const bx = rightEdge + (12 + hash01(slot * 9.03) * 16 * scale);
+        const by = sy - baseH;
+        ctx.fillStyle = bodyColor;
+        ctx.fillRect(bx, by, baseW, baseH);
+        ctx.fillStyle = '#9ca7af';
+        ctx.beginPath();
+        ctx.moveTo(bx - roof, by);
+        ctx.lineTo(bx + baseW + roof, by);
+        ctx.lineTo(bx + baseW * 0.5, by - roof * 1.8);
+        ctx.closePath();
+        ctx.fill();
+        if (windowOn) {
+          ctx.fillStyle = 'rgba(255, 214, 136, 0.72)';
+          const cols = Math.max(1, Math.floor(baseW / (6 * scale)));
+          const rows = Math.max(1, Math.floor(baseH / (10 * scale)));
+          for (let cx = 0; cx < cols; cx++) {
+            for (let cy = 0; cy < rows; cy++) {
+              if (hash01(slot * 13.7 + cx * 1.8 + cy * 2.1) > 0.63) continue;
+              ctx.fillRect(
+                bx + 2 * scale + cx * 6 * scale,
+                by + 3 * scale + cy * 10 * scale,
+                2.5 * scale,
+                4 * scale
+              );
+            }
+          }
+        }
+      }
+    }
   }
 
   function drawPlayer(scale, left) {
