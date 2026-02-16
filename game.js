@@ -122,7 +122,7 @@
     assetState.ready = true;
     const msg = ui.overlay.querySelector('p');
     if (msg && !world.running) {
-      msg.textContent = 'Веди истребитель по реке, уничтожай цели и собирай топливо.';
+      msg.textContent = 'Pilot your jet along the river, destroy targets, and collect fuel.';
     }
   }
 
@@ -362,8 +362,8 @@
     if (player.hp <= 0) {
       world.running = false;
       ui.overlay.classList.remove('hidden');
-      ui.overlay.querySelector('h1').textContent = 'Игра окончена';
-      ui.overlay.querySelector('p').textContent = `Счет: ${Math.floor(world.score)}. Нажми "Старт" для новой попытки.`;
+      ui.overlay.querySelector('h1').textContent = 'Game Over';
+      ui.overlay.querySelector('p').textContent = `Score: ${Math.floor(world.score)}. Press "Start" for a new run.`;
     }
   }
 
@@ -890,14 +890,14 @@
 
   ui.start.addEventListener('click', () => {
     if (!assetState.ready) {
-      ui.overlay.querySelector('p').textContent = 'Загружаю графику... попробуй через 1-2 секунды.';
+      ui.overlay.querySelector('p').textContent = 'Loading graphics... try again in 1-2 seconds.';
       return;
     }
     ensureAudio();
     playPickupSound();
     ui.overlay.classList.add('hidden');
     ui.overlay.querySelector('h1').textContent = 'River Strike';
-    ui.overlay.querySelector('p').textContent = 'Веди истребитель по реке, уничтожай цели и собирай топливо.';
+    ui.overlay.querySelector('p').textContent = 'Pilot your jet along the river, destroy targets, and collect fuel.';
     resetWorld();
     world.running = true;
   });
@@ -908,9 +908,9 @@
 
   resize();
   resetWorld();
-  ui.overlay.querySelector('p').textContent = 'Загружаю графику...';
+  ui.overlay.querySelector('p').textContent = 'Loading graphics...';
   loadAssets().catch(() => {
-    ui.overlay.querySelector('p').textContent = 'Ошибка загрузки графики. Обнови страницу.';
+    ui.overlay.querySelector('p').textContent = 'Graphics failed to load. Refresh the page.';
   });
   requestAnimationFrame(loop);
 })();

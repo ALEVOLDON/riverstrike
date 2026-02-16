@@ -1,43 +1,43 @@
 # River Strike Mobile
 
-Аркадная браузерная игра в стиле River Raid с адаптацией под смартфоны.
+An arcade browser game inspired by River Raid, adapted for smartphones.
 
-## Возможности
+## Features
 
-- Мобильное touch-управление (стик + кнопка `FIRE`)
-- Управление с клавиатуры на ПК (`WASD`/стрелки + `Space`)
-- Процедурная река и поток целей
-- Вражеская стрельба, уклонение, очки, топливо, жизни
-- Военные корабли, вертолеты, острова
-- Спрайтовая графика и эффекты взрывов
-- Фоновая музыка и звуковые эффекты
+- Mobile touch controls (joystick + `FIRE` button)
+- Keyboard controls on desktop (`WASD`/arrows + `Space`)
+- Procedural river and target flow
+- Enemy shooting, dodging, score, fuel, and lives
+- Warships, helicopters, and islands
+- Sprite-based graphics and explosion effects
+- Background music and sound effects
 
-## Запуск
+## Run
 
-1. Открой `index.html` в браузере.
-2. Нажми `Старт`.
+1. Open `index.html` in your browser.
+2. Press `Start`.
 
-Для корректного обновления ассетов после изменений используй hard refresh (`Ctrl+F5`).
+For correct asset refresh after updates, use a hard refresh (`Ctrl+F5`).
 
-## Управление
+## Controls
 
-### Смартфон
+### Smartphone
 
-- Левый стик: движение
-- Кнопка `FIRE`: стрельба
+- Left joystick: movement
+- `FIRE` button: shoot
 
-### ПК
+### Desktop
 
-- `W/A/S/D` или стрелки: движение
-- `Space`: стрельба
+- `W/A/S/D` or arrow keys: movement
+- `Space`: shoot
 
-## Структура проекта
+## Project Structure
 
-- `index.html` — разметка игры и UI
-- `styles.css` — стили интерфейса и layout
-- `game.js` — логика игры, рендер, звук, управление
-- `assets/` — спрайты и кадры взрывов
+- `index.html` - game markup and UI
+- `styles.css` - interface styles and layout
+- `game.js` - game logic, rendering, audio, controls
+- `assets/` - sprites and explosion frames
 
-## Лицензия
+## License
 
-MIT. Подробности в файле `LICENSE`.
+MIT. See `LICENSE` for details.
