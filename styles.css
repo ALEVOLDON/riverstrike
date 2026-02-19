@@ -126,6 +126,16 @@ html, body {
 }
 @keyframes radar-sweep { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 
+/* Fullscreen button */
+.fs-btn {
+  background: none; border: 1px solid rgba(100,200,255,0.3); border-radius: 4px;
+  color: rgba(150,220,255,0.7); font-size: 14px; cursor: pointer;
+  padding: 2px 5px; line-height: 1; margin-left: 4px;
+  transition: background 200ms, color 200ms;
+}
+.fs-btn:hover { background: rgba(80,180,255,0.15); color: #9ff; }
+
+
 /* ─── GAME CANVAS AREA ─── */
 #game-container {
   flex: 1; min-height: 0; width: 100%;
@@ -271,3 +281,20 @@ html, body {
 .overlay button:active { transform: scale(0.97); }
 
 .hidden { display: none; }
+
+/* Power-up status chip */
+.powerup-status {
+  font-family: 'Orbitron', monospace;
+  font-size: 9px; letter-spacing: 1px;
+  color: #ffe060; text-shadow: 0 0 6px rgba(255,220,60,0.6);
+  min-height: 14px; text-align: center;
+}
+
+/* Intro plane animation */
+.overlay__plane {
+  font-size: 36px;
+  display: block;
+  margin-bottom: 4px;
+  will-change: transform, opacity;
+  filter: drop-shadow(0 0 12px rgba(80,200,255,0.6));
+}

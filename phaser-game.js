@@ -170,6 +170,18 @@
       this.playerShotCd = 0;
       this.spawnCd      = 0.65;
       this.wave         = 0;
+      // ── Combo system
+      this.combo         = 0;
+      this.comboTimer    = 0;
+      this.comboText     = null;
+      // ── Power-up state
+      this.shieldActive  = false;
+      this.shieldTimer   = 0;
+      this.doubleShotOn  = false;
+      this.doubleShotTimer = 0;
+      this.bombPending   = false;
+      // ── Fuel alarm
+      this.fuelAlarmCd   = 0;
 
       this.keys = this.input.keyboard.addKeys({
         left:  Phaser.Input.Keyboard.KeyCodes.LEFT,
@@ -202,6 +214,10 @@
       this.bg        = this.add.graphics().setDepth(-1);
       // Parallax far-background layer (trees/hills behind everything)
       this.bgFar      = this.add.graphics().setDepth(-2);
+      // Wake trails layer (behind enemies but in front of water)
+      this.wakeGfx    = this.add.graphics().setDepth(-0.5);
+      // Stars layer (for night phase)
+      this.starsGfx   = this.add.graphics().setDepth(-2.8);
 
       // Day/night cycle state (0 = dawn, 1 = full day, 2 = dusk, 3 = night)
       this.dayTime  = 0;   // 0..1 within current phase, advances with wave
@@ -272,6 +288,8 @@
       this.enemyBullets  = this.physics.add.group();
       this.fuels         = this.physics.add.group();
       this.islands       = this.physics.add.group();
+      this.powerups      = this.physics.add.group();   // NEW: power-up drops
+      this.bridges       = [];                          // NEW: bridge obstacles (graphics array)
 
       // ── Explosion animation ──────────────────────────────────────────────────
       if (!this.anims.exists('explosion') && this.textures.exists('a_expl1')) {
@@ -301,12 +319,36 @@
         Haptic.hit();
         if (e.hp <= 0) {
           this.spawnExplosion(e.x, e.y, e.type === 'warship');
-          this.scoreValue += e.type === 'warship' ? 180 : 75;
+          const baseScore = e.type === 'warship' ? 180 : 75;
+          // Combo
+          this.combo++;
+          this.comboTimer = 3.0;
+          const mult = Math.min(4, 1 + Math.floor(this.combo / 3));
+          this.scoreValue += baseScore * mult;
+          if (mult > 1) this.showCombo(e.x, e.y, mult);
           Haptic.kill();
           if (e.rotor) e.rotor.destroy();
           e.destroy();
         }
       });
+
+      // Power-up pickup
+      this.physics.add.overlap(this.player, this.powerups, (_p, pu) => {
+        this.collectPowerup(pu.puType);
+        pu.destroy();
+      });
+
+      // Player vs bridges
+      this.overlapBridges = () => {
+        for (const br of this.bridges) {
+          if (!br.active || !this.running) continue;
+          const px = this.player.x, py = this.player.y;
+          if (py > br.y - 6 && py < br.y + 6 && px > br.lx && px < br.rx) {
+            this.damagePlayer();
+            break;
+          }
+        }
+      };
 
       this.physics.add.overlap(this.player, this.fuels, (_p, f) => {
         this.fuelValue = Math.min(100, this.fuelValue + 28);
@@ -531,6 +573,17 @@
       this.playerShotCd = 0;
       this.spawnCd      = 0.65;
       this.wave         = 0;
+      this.combo        = 0;
+      this.comboTimer   = 0;
+      this.shieldActive = false; this.shieldTimer = 0;
+      this.doubleShotOn = false; this.doubleShotTimer = 0;
+      this.fuelAlarmCd  = 0;
+      // Clear bridges
+      this.bridges.forEach(b => { if (b.gfx) b.gfx.destroy(); });
+      this.bridges = [];
+      // Clear powerup labels then group
+      this.powerups.children.each(pu => { if (pu.label) pu.label.destroy(); });
+      this.powerups.clear(true, true);
 
       this.player.setPosition(GAME_W * 0.5, GAME_H - 48);
       this.player.setVisible(true);
@@ -578,6 +631,68 @@
       if (this.livesValue <= 0) this.stopRun();
     }
 
+    // ── showCombo ─────────────────────────────────────────────────────────────
+    showCombo(x, y, mult) {
+      const txt = this.add.text(x, y, `x${mult}!`, {
+        fontFamily: 'Orbitron, monospace', fontSize: '14px',
+        color: ['#fff', '#ffe048', '#ff9900', '#ff4400'][mult - 1] || '#ff4400',
+        stroke: '#000', strokeThickness: 3
+      }).setDepth(30).setOrigin(0.5, 1);
+      this.tweens.add({ targets: txt, y: y - 30, alpha: 0, duration: 900,
+        ease: 'Quad.easeOut', onComplete: () => txt.destroy() });
+    }
+
+    // ── collectPowerup ────────────────────────────────────────────────────────
+    collectPowerup(type) {
+      Audio.pickup();
+      Haptic.fuel();
+      this.flash(0xeeffee, 80);
+      if (type === 'shield') {
+        this.shieldActive = true;
+        this.shieldTimer  = 8;
+      } else if (type === 'double') {
+        this.doubleShotOn    = true;
+        this.doubleShotTimer = 10;
+      } else if (type === 'bomb') {
+        this.enemies.children.each(e => {
+          this.spawnExplosion(e.x, e.y, false);
+          if (e.rotor) e.rotor.destroy();
+          e.destroy();
+        });
+        this.cameras.main.shake(300, 0.025);
+        this.flash(0xfff0a0, 200);
+        Haptic.kill();
+      }
+    }
+
+    // ── spawnPowerup ──────────────────────────────────────────────────────────
+    spawnPowerup(x) {
+      const types  = ['shield', 'double', 'bomb'];
+      const puType = types[Math.floor(Math.random() * types.length)];
+      const colors = { shield: 0x55aaff, double: 0xffee00, bomb: 0xff6622 };
+      const pu = this.powerups.create(x, -16, 'spark');
+      pu.puType = puType;
+      pu.speed  = this.speed * 0.50;
+      pu.setScale(2.2).setDepth(5).setTint(colors[puType]);
+      this.tweens.add({ targets: pu, scaleX: 2.8, scaleY: 2.8, alpha: 0.7,
+        duration: 400, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+      const labels = { shield: '💠', double: '⚡', bomb: '💣' };
+      const lbl = this.add.text(x, -16, labels[puType], { fontSize: '10px' })
+        .setDepth(6).setOrigin(0.5, 0.5);
+      pu.label = lbl;
+    }
+
+    // ── spawnBridge ───────────────────────────────────────────────────────────
+    spawnBridge() {
+      const r = this.riverAt(0);
+      this.bridges.push({
+        active: true, y: -20,
+        lx: r.center - r.riverW * 0.5,
+        rx: r.center + r.riverW * 0.5,
+        speed: this.speed * 0.45
+      });
+    }
+
     // ── spawnEnemyOrFuel ──────────────────────────────────────────────────────
     spawnEnemyOrFuel() {
       const r = this.riverAt(0);
@@ -586,22 +701,21 @@
       const x = Phaser.Math.FloatBetween(left, right);
       const roll = Math.random();
 
+      if (this.wave > 20 && Math.random() < 0.06) { this.spawnBridge(); return; }
+      if (Math.random() < 0.05) { this.spawnPowerup(x); return; }
+
       if (roll < 0.18) {
-        // fuel can
         const f = this.fuels.create(x, -16, this.tex.fuel);
         f.speed = this.speed * 0.55;
         if (this.tex.fuel === 'a_fuel') f.setScale(this.svgScale * 1.1);
         f.setDepth(4);
       } else if (roll < 0.30) {
-        // island
         const i = this.islands.create(x, -16, this.tex.island);
         i.speed = this.speed * 0.48;
         i.hp    = 2;
-        // Island SVGs can be large — keep them small relative to river width
         if (this.tex.island === 'a_island') i.setScale(this.svgScale * 1.1);
         i.setDepth(3);
       } else {
-        // enemy
         const types   = ['boat', 'heli', 'warship'];
         const weights = [0.50, 0.30, 0.20];
         let type = 'boat';
@@ -618,30 +732,29 @@
           ? (type === 'warship' ? this.svgScale * 1.8 : this.svgScale * 1.3)
           : 1;
 
-        const e  = this.enemies.create(x, -16, texKey);
-        if (isSvg) e.setScale(eScale);
-        e.type   = type;
-        e.hp     = type === 'warship' ? 4 : type === 'heli' ? 2 : 1;
-        e.speed  = this.speed * (type === 'warship' ? 0.38 : 0.46);
-        e.vx     = Phaser.Math.FloatBetween(-28, 28);
-        e.fireCd = Phaser.Math.FloatBetween(1.5, 3.5);
-        e.setDepth(4);
+        // V-formation after wave 15
+        const useFormation = this.wave > 15 && type !== 'warship' && Math.random() < 0.22;
+        const fpos = useFormation
+          ? [{ dx: 0, dy: 0 }, { dx: -18, dy: 14 }, { dx: 18, dy: 14 }]
+          : [{ dx: 0, dy: 0 }];
 
-        // heli rotor — use tweens for smooth spin
-        if (type === 'heli') {
-          const rotorKey   = this.textures.exists('a_rotor') ? 'a_rotor' : 'heli';
-          const rotorScale = rotorKey === 'a_rotor' ? this.svgScale * 1.8 : 0.6;
-          e.rotor = this.add.image(e.x, e.y - 10, rotorKey)
-            .setAlpha(0.75).setDepth(5).setScale(rotorScale);
-          // Continuous tween-driven spin
-          this.tweens.add({
-            targets:  e.rotor,
-            angle:    360,
-            duration: 420,
-            repeat:   -1,
-            ease:     'Linear'
-          });
-        }
+        fpos.forEach(fp => {
+          const ex = Phaser.Math.Clamp(x + fp.dx, left, right);
+          const e  = this.enemies.create(ex, -16 + fp.dy, texKey);
+          if (isSvg) e.setScale(eScale);
+          e.type   = type;
+          e.hp     = type === 'warship' ? 4 : type === 'heli' ? 2 : 1;
+          e.speed  = this.speed * (type === 'warship' ? 0.38 : 0.46);
+          e.vx     = Phaser.Math.FloatBetween(-28, 28);
+          e.fireCd = Phaser.Math.FloatBetween(1.5, 3.5);
+          e.setDepth(4);
+          if (type === 'heli') {
+            const rk = this.textures.exists('a_rotor') ? 'a_rotor' : 'heli';
+            const rs = rk === 'a_rotor' ? this.svgScale * 1.8 : 0.6;
+            e.rotor = this.add.image(ex, -16 + fp.dy - 10, rk).setAlpha(0.75).setDepth(5).setScale(rs);
+            this.tweens.add({ targets: e.rotor, angle: 360, duration: 420, repeat: -1, ease: 'Linear' });
+          }
+        });
       }
     }
 
@@ -873,8 +986,14 @@
       if (firing && this.playerShotCd <= 0) {
         this.playerShotCd = 0.13;
         const b = this.playerBullets.create(this.player.x, this.player.y - 10, 'pbullet');
-        b.vy = -250;
-        b.setDepth(6);
+        b.vy = -250; b.setDepth(6);
+        if (this.doubleShotOn) {
+          // Side bullets for double-shot
+          const b2 = this.playerBullets.create(this.player.x - 6, this.player.y - 6, 'pbullet');
+          b2.vy = -250; b2.setDepth(6);
+          const b3 = this.playerBullets.create(this.player.x + 6, this.player.y - 6, 'pbullet');
+          b3.vy = -250; b3.setDepth(6);
+        }
         this.emitSparks(this.player.x, this.player.y - 10, 1);
         Audio.shoot();
         this.tweens.add({
@@ -928,7 +1047,7 @@
         const er  = rv.center + rv.riverW * 0.5 - 12;
         e.x += e.vx * dt;
         e.y += e.speed * dt;
-        if (e.rotor) { e.rotor.x = e.x; e.rotor.y = e.y - 10; e.rotor.rotation += 14 * dt; }
+        if (e.rotor) { e.rotor.x = e.x; e.rotor.y = e.y - 10; }
         if (e.x < el || e.x > er) { e.vx *= -1; e.x = Phaser.Math.Clamp(e.x, el, er); }
         if (e.type === 'heli') e.angle = Math.sin((e.y + this.scroll) * 0.08) * 4;
         e.fireCd -= dt;
@@ -939,6 +1058,48 @@
         if (e.y > GAME_H + 28) { if (e.rotor) e.rotor.destroy(); e.destroy(); }
       });
 
+      // ── Move power-ups
+      this.powerups.children.each(pu => {
+        pu.y += pu.speed * dt;
+        if (pu.label) { pu.label.x = pu.x; pu.label.y = pu.y; }
+        if (pu.y > GAME_H + 20) { if (pu.label) pu.label.destroy(); pu.destroy(); }
+      });
+
+      // ── Wake trails (boats & warships)
+      this.wakeGfx.clear();
+      this.enemies.children.each(e => {
+        if (e.type !== 'boat' && e.type !== 'warship') return;
+        const wAlpha = e.type === 'warship' ? 0.22 : 0.16;
+        const wW     = e.type === 'warship' ? 10 : 6;
+        this.wakeGfx.fillStyle(0xb8e4f9, wAlpha);
+        this.wakeGfx.fillTriangle(e.x, e.y, e.x - wW, e.y + 20, e.x + wW, e.y + 20);
+      });
+
+      // ── Bridge move & render
+      const bg = this.bg;
+      this.bridges = this.bridges.filter(br => {
+        br.y += br.speed * dt;
+        if (br.y > GAME_H + 30) { br.active = false; return false; }
+        // Draw bridge
+        const bridgeAlpha = 1;
+        bg.fillStyle(0x5c4a2a, bridgeAlpha);
+        bg.fillRect(br.lx - 4, br.y - 3, br.rx - br.lx + 8, 6);
+        bg.fillStyle(0x7a6338, 1);
+        bg.fillRect(br.lx - 2, br.y - 2, br.rx - br.lx + 4, 2);
+        // Pillars
+        const midX = (br.lx + br.rx) * 0.5;
+        for (const px of [br.lx + 6, midX, br.rx - 6]) {
+          bg.fillStyle(0x4a3a1e, 1);
+          bg.fillRect(px - 2, br.y, 4, 10);
+        }
+        // Collision check
+        const px = this.player.x, py = this.player.y;
+        if (this.player.invuln === 0 && py > br.y - 6 && py < br.y + 8 && px > br.lx - 2 && px < br.rx + 2) {
+          this.damagePlayer();
+        }
+        return true;
+      });
+
       // Fuel drain
       this.fuelValue = Math.max(0, this.fuelValue - 3.2 * dt);
       if (this.fuelValue <= 0) this.damagePlayer();
@@ -947,6 +1108,52 @@
       this.scoreValue += dt * 18;
       this.wave       += dt;
       this.speed       = 105 + Math.min(48, this.wave * 1.6);
+
+      // ── Combo decay
+      if (this.comboTimer > 0) {
+        this.comboTimer -= dt;
+        if (this.comboTimer <= 0) this.combo = 0;
+      }
+
+      // ── Power-up timers
+      if (this.shieldTimer > 0) {
+        this.shieldTimer -= dt;
+        if (this.shieldTimer <= 0) { this.shieldActive = false; }
+      }
+      if (this.doubleShotTimer > 0) {
+        this.doubleShotTimer -= dt;
+        if (this.doubleShotTimer <= 0) { this.doubleShotOn = false; }
+      }
+
+      // ── Shield ring visual
+      if (this.shieldActive && this.player.invuln === 0) {
+        const sg = this.bg;
+        sg.lineStyle(2, 0x55aaff, 0.55 + 0.35 * Math.sin(this.wave * 8));
+        sg.strokeCircle(this.player.x, this.player.y, 14);
+        // Shield absorbs one hit
+        if (this.player.invuln > 0) this.shieldActive = false;
+      }
+
+      // ── Night stars overlay (starsGfx cleared in drawBackground)
+      if (this.dayPhase === 2) {
+        const starAlpha = Math.min(0.9, (this.dayTime + 0.3));
+        this.starsGfx.clear();
+        for (let si = 0; si < 28; si++) {
+          const sx = ((si * 73 + this.scroll * 0.02) % GAME_W);
+          const sy = (si * 47) % (GAME_H * 0.6);
+          this.starsGfx.fillStyle(0xffffff, (0.3 + (si % 5) * 0.14) * starAlpha);
+          this.starsGfx.fillRect(sx, sy, 1, 1);
+        }
+      } else {
+        this.starsGfx.clear();
+      }
+
+      // ── Fuel alarm beep
+      this.fuelAlarmCd -= dt;
+      if (this.fuelValue < 20 && this.fuelAlarmCd <= 0) {
+        Audio.playTone(880, 0.06, 'square', 0.08, Audio.sfx, 0.002, 0.04);
+        this.fuelAlarmCd = 1.6;
+      }
 
       // ── Day/Night cycle ─────────────────────────────────────────────────────
       // Phase advances every 60s of wave time; 4 phases: 1=day, 2=dusk, 3=night, 4=dawn
