@@ -2,8 +2,9 @@
 
 > **Arcade scrolling shooter** — mobile-first, two playable versions.
 
-[![Play v2 (Phaser)](https://img.shields.io/badge/Play-v2%20Phaser-61dafb?style=for-the-badge)](index.html)
-[![Play v1 (Canvas)](https://img.shields.io/badge/Play-v1%20Canvas-4caf50?style=for-the-badge)](v1/index.html)
+[![Live Demo](https://img.shields.io/badge/🎮%20Play%20Live-riverstrike.netlify.app-ff6b6b?style=for-the-badge)](https://riverstrike.netlify.app/)
+[![Play v1 (Canvas)](https://img.shields.io/badge/Play-v1%20Canvas-4caf50?style=for-the-badge)](https://riverstrike.netlify.app/v1/)
+[![GitHub](https://img.shields.io/badge/GitHub-Source-181717?style=for-the-badge&logo=github)](https://github.com/ALEVOLDON/River-Raid)
 
 ---
 
