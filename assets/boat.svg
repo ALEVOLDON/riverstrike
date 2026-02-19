@@ -1,6 +1,58 @@
 ﻿<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
-  <defs><linearGradient id="w" x1="0" x2="1"><stop offset="0" stop-color="#8098ad"/><stop offset="1" stop-color="#4e667a"/></linearGradient></defs>
-  <path d="M20 72 L64 30 L108 72 L96 98 L32 98 Z" fill="url(#w)" stroke="#273847" stroke-width="4"/>
-  <rect x="50" y="56" width="28" height="20" rx="3" fill="#d4623c"/>
-  <rect x="58" y="45" width="12" height="12" rx="2" fill="#2f4c66"/>
+  <defs>
+    <linearGradient id="hullBoat" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#9fb0c1"/>
+      <stop offset="1" stop-color="#4a5e72"/>
+    </linearGradient>
+    <linearGradient id="deckBoat" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f6f0e8"/>
+      <stop offset="1" stop-color="#d4c4af"/>
+    </linearGradient>
+    <linearGradient id="cabinBoat" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#b6d0e4"/>
+    </linearGradient>
+  </defs>
+
+  
+  <ellipse cx="64" cy="92" rx="26" ry="10" fill="#021019" fill-opacity="0.45"/>
+
+  
+  <path d="M20 70
+           L64 26
+           L108 70
+           Q96 102 64 106
+           Q32 102 20 70 Z"
+        fill="url(#hullBoat)"
+        stroke="#1f2f3c"
+        stroke-width="4"
+        stroke-linejoin="round"/>
+
+  
+  <path d="M30 70
+           L64 38
+           L98 70
+           Q80 92 64 94
+           Q48 92 30 70 Z"
+        fill="url(#deckBoat)"
+        stroke="#c7b49a"
+        stroke-width="2"/>
+
+  
+  <rect x="48" y="48" width="32" height="20" rx="4"
+        fill="url(#cabinBoat)"
+        stroke="#2a4b66"
+        stroke-width="3"/>
+
+  
+  <rect x="54" y="52" width="10" height="10" rx="2" fill="#4fa6e0"/>
+  <rect x="64" y="52" width="10" height="10" rx="2" fill="#4fa6e0"/>
+
+  
+  <rect x="48" y="70" width="32" height="6" rx="3" fill="#f07a3b"/>
+
+  
+  <path d="M64 30 L72 40" stroke="#dde6f0" stroke-width="2" stroke-linecap="round" stroke-opacity="0.85"/>
+  <path d="M64 30 L56 40" stroke="#dde6f0" stroke-width="2" stroke-linecap="round" stroke-opacity="0.85"/>
 </svg>
+

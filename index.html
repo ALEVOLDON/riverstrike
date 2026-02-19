@@ -1,36 +1,62 @@
-﻿<!doctype html>
-<html lang="en">
+<!doctype html>
+<html lang="ru">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
-  <title>River Strike Mobile</title>
+  <title>River Strike - Mobile Arcade</title>
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
   <div id="game-wrap">
-    <canvas id="game" aria-label="River Strike"></canvas>
 
-    <div class="hud">
-      <div class="stat"><span>Score</span><strong id="score">0</strong></div>
-      <div class="stat"><span>Fuel</span><strong id="fuel">100%</strong></div>
-      <div class="stat"><span>Lives</span><strong id="hp">3</strong></div>
+    <!-- Decorative cockpit panel top -->
+    <div class="panel-top">
+      <div class="hud">
+        <div class="stat"><span>Score</span><strong id="score">0</strong></div>
+        <div class="stat"><span>Fuel</span><strong id="fuel">100%</strong></div>
+        <div class="stat"><span>Lives</span><strong id="hp">3</strong></div>
+      </div>
+      <div class="panel-top__deco">
+        <div class="pdeco pdeco--left">
+          <div class="pdeco__light pdeco__light--g"></div>
+          <div class="pdeco__light pdeco__light--y"></div>
+          <div class="pdeco__light pdeco__light--r"></div>
+        </div>
+        <div class="pdeco__label">RIVER STRIKE</div>
+        <div class="pdeco pdeco--right">
+          <div class="pdeco__radar"></div>
+        </div>
+      </div>
     </div>
 
-    <div class="controls">
-      <div id="stick-zone" class="stick-zone">
-        <div id="stick" class="stick"></div>
+    <!-- Game canvas -->
+    <div id="game-container" aria-label="River Strike game"></div>
+
+    <!-- Decorative cockpit panel bottom -->
+    <div class="panel-bottom">
+      <div class="controls">
+        <div id="stick-zone" class="stick-zone">
+          <div id="stick" class="stick"></div>
+        </div>
+        <div class="panel-bottom__mid">
+          <div class="pb-meter">
+            <div class="pb-meter__bar" id="fuel-bar"></div>
+            <span class="pb-meter__label">FUEL</span>
+          </div>
+        </div>
+        <button id="fire" class="fire-btn" aria-label="Fire">FIRE</button>
       </div>
-      <button id="fire" class="fire-btn" aria-label="Fire">FIRE</button>
     </div>
 
     <div id="overlay" class="overlay">
       <h1>River Strike</h1>
-      <p>Pilot your jet along the river, destroy targets, and collect fuel.</p>
-      <p>Joystick on the left, FIRE button on the right.</p>
+      <p>Arcade action: dodge, shoot, and collect fuel.</p>
+      <p>Left joystick, right FIRE button. Keyboard: WASD/arrows + Space.</p>
       <button id="start">Start</button>
     </div>
   </div>
 
-  <script src="game.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/phaser@3.90.0/dist/phaser.min.js"></script>
+  <script src="phaser-game.js"></script>
 </body>
 </html>

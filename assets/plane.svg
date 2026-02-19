@@ -1,12 +1,119 @@
 ﻿<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
   <defs>
-    <linearGradient id="b" x1="0" x2="1">
-      <stop offset="0" stop-color="#f5fbff"/>
-      <stop offset="1" stop-color="#99c6eb"/>
+    
+    <linearGradient id="hull" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#eef8ff"/>
+      <stop offset="0.4" stop-color="#b5d5f0"/>
+      <stop offset="1" stop-color="#5b7fa2"/>
+    </linearGradient>
+    
+    <linearGradient id="hullShadow" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1f3246" stop-opacity="0.9"/>
+      <stop offset="1" stop-color="#0e1721" stop-opacity="0.0"/>
+    </linearGradient>
+    
+    <linearGradient id="glass" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.95"/>
+      <stop offset="0.4" stop-color="#9be4ff" stop-opacity="0.9"/>
+      <stop offset="1" stop-color="#3179a6" stop-opacity="0.95"/>
+    </linearGradient>
+    
+    <linearGradient id="flame" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fff9c4"/>
+      <stop offset="0.4" stop-color="#ffb347"/>
+      <stop offset="1" stop-color="#ff5a1f"/>
     </linearGradient>
   </defs>
-  <path d="M64 8 L90 104 L64 90 L38 104 Z" fill="url(#b)" stroke="#184260" stroke-width="4"/>
-  <rect x="55" y="38" width="18" height="34" rx="6" fill="#57d2ff" stroke="#12485f" stroke-width="3"/>
-  <path d="M54 99 L64 124 L74 99 Z" fill="#ff8a41"/>
-  <path d="M32 76 L96 76" stroke="#16445e" stroke-width="6" stroke-linecap="round"/>
+
+  
+  <ellipse cx="64" cy="106" rx="18" ry="8" fill="#031320" fill-opacity="0.45"/>
+
+  
+  <path d="M64 16 L90 104 L64 96 L38 104 Z"
+        fill="url(#hullShadow)"/>
+
+  
+  <path d="M64 8
+           L96 104
+           Q64 96 64 94
+           Q64 96 32 104
+           Z"
+        fill="url(#hull)"
+        stroke="#163454"
+        stroke-width="4"
+        stroke-linejoin="round"/>
+
+  
+  <path d="M60 14 L68 14 L88 100 Q64 94 64 92 Q64 94 40 100 Z"
+        fill="#dcecff"
+        fill-opacity="0.9"/>
+
+  
+  <path d="M18 76
+           L52 70
+           L52 82
+           L18 90 Z"
+        fill="#4c647d"
+        stroke="#1e3245"
+        stroke-width="3"
+        stroke-linejoin="round"/>
+
+  <path d="M110 76
+           L76 70
+           L76 82
+           L110 90 Z"
+        fill="#4c647d"
+        stroke="#1e3245"
+        stroke-width="3"
+        stroke-linejoin="round"/>
+
+  
+  <rect x="16" y="80" width="8" height="10" rx="2" fill="#182330"/>
+  <rect x="104" y="80" width="8" height="10" rx="2" fill="#182330"/>
+
+  
+  <path d="M50 92 L58 88 L58 104 L50 104 Z"
+        fill="#3d556c"/>
+  <path d="M78 92 L70 88 L70 104 L78 104 Z"
+        fill="#3d556c"/>
+
+  
+  <path d="M50 36
+           Q64 22 78 36
+           L78 62
+           Q64 54 50 62 Z"
+        fill="url(#glass)"
+        stroke="#1a4f73"
+        stroke-width="3"/>
+
+  
+  <path d="M64 26 L64 58"
+        stroke="#dff8ff"
+        stroke-width="3"
+        stroke-linecap="round"
+        stroke-opacity="0.9"/>
+
+  
+  <path d="M54 54 L74 60"
+        stroke="#89c8ff"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-opacity="0.8"/>
+  <path d="M54 64 L74 70"
+        stroke="#89c8ff"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-opacity="0.8"/>
+
+  
+  <path d="M56 102
+           Q64 118 72 102
+           Q64 112 56 102 Z"
+        fill="url(#flame)"/>
+  <path d="M60 100 Q64 110 68 100"
+        stroke="#ffe9b0"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-opacity="0.9"/>
 </svg>
+

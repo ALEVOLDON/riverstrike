@@ -35,7 +35,7 @@ For correct asset refresh after updates, use a hard refresh (`Ctrl+F5`).
 
 - `index.html` - game markup and UI
 - `styles.css` - interface styles and layout
-- `game.js` - game logic, rendering, audio, controls
+- `phaser-game.js` - Phaser game logic, rendering, audio, controls
 - `assets/` - sprites and explosion frames
 
 ## License

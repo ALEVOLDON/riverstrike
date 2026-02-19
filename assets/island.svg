@@ -1,13 +1,31 @@
 ﻿<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 128">
   <defs>
-    <radialGradient id="i" cx="50%" cy="45%" r="60%">
-      <stop offset="0" stop-color="#a7bd6d"/>
+    <radialGradient id="islandGrass" cx="50%" cy="40%" r="60%">
+      <stop offset="0" stop-color="#c7df87"/>
       <stop offset="1" stop-color="#6f8541"/>
     </radialGradient>
+    <radialGradient id="islandShadow" cx="50%" cy="60%" r="60%">
+      <stop offset="0" stop-color="#000000" stop-opacity="0.5"/>
+      <stop offset="1" stop-color="#000000" stop-opacity="0"/>
+    </radialGradient>
   </defs>
-  <ellipse cx="82" cy="74" rx="58" ry="34" fill="#3d5b36" opacity=".45"/>
-  <ellipse cx="80" cy="64" rx="60" ry="36" fill="url(#i)" stroke="#4f6330" stroke-width="4"/>
-  <ellipse cx="60" cy="60" rx="16" ry="10" fill="#5a6f38"/>
-  <ellipse cx="95" cy="72" rx="18" ry="12" fill="#5a6f38"/>
-  <ellipse cx="84" cy="56" rx="11" ry="7" fill="#819758"/>
+
+  
+  <ellipse cx="82" cy="78" rx="58" ry="34" fill="url(#islandShadow)"/>
+
+  
+  <ellipse cx="80" cy="66" rx="60" ry="36"
+           fill="url(#islandGrass)"
+           stroke="#4f6330"
+           stroke-width="4"/>
+
+  
+  <ellipse cx="60" cy="60" rx="18" ry="11" fill="#5a6f38"/>
+  <ellipse cx="96" cy="74" rx="20" ry="13" fill="#5a6f38"/>
+  <ellipse cx="84" cy="54" rx="12" ry="8" fill="#819758"/>
+
+  
+  <ellipse cx="56" cy="56" rx="8" ry="4" fill="#dfeec0" fill-opacity="0.7"/>
+  <ellipse cx="96" cy="70" rx="9" ry="4" fill="#dfeec0" fill-opacity="0.5"/>
 </svg>
+
