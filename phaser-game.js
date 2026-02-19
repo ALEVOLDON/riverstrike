@@ -16,9 +16,28 @@
 
   const touch = { x: 0, y: 0, firing: false, pointerId: null };
 
-  let gameRef = null;
-  let sceneRef = null;
+  let gameRef      = null;
+  let sceneRef     = null;
   let pendingStart = false;
+
+  // ── Highscore ───────────────────────────────────────────────────────────────────────────
+  const HiScore = {
+    key: 'riverStrike_hi',
+    get() { return parseInt(localStorage.getItem(this.key) || '0', 10); },
+    save(score) {
+      if (score > this.get()) { localStorage.setItem(this.key, String(Math.floor(score))); return true; }
+      return false;
+    }
+  };
+
+  // ── Haptic feedback ───────────────────────────────────────────────────────────────────────
+  const Haptic = {
+    tap(pattern = [40])  { if (navigator.vibrate) navigator.vibrate(pattern); },
+    hit()                { this.tap([30]);       },
+    kill()               { this.tap([60, 30, 60]); },
+    damage()             { this.tap([100, 40, 80]); },
+    fuel()               { this.tap([20]);       }
+  };
 
   // ─── Audio System ────────────────────────────────────────────────────────────
   const Audio = {
@@ -181,6 +200,14 @@
       this.sky       = this.add.graphics().setDepth(-3);
       this.waterLayer = this.add.tileSprite(GAME_W / 2, GAME_H / 2, GAME_W, GAME_H, 'water_tex').setDepth(-2.5);
       this.bg        = this.add.graphics().setDepth(-1);
+      // Parallax far-background layer (trees/hills behind everything)
+      this.bgFar      = this.add.graphics().setDepth(-2);
+
+      // Day/night cycle state (0 = dawn, 1 = full day, 2 = dusk, 3 = night)
+      this.dayTime  = 0;   // 0..1 within current phase, advances with wave
+      this.dayPhase = 1;   // start in daytime
+      this.dayOverlay = this.add.rectangle(GAME_W * 0.5, GAME_H * 0.5, GAME_W, GAME_H, 0x000020, 0)
+        .setDepth(20.5).setScrollFactor(0);
 
       // ── Player ───────────────────────────────────────────────────────────────
       // SVG is 128px wide; scale to 22px visible width for the player
@@ -271,9 +298,11 @@
         this.emitSparks(b.x, b.y, 3);
         this.flash(0xffe08a, 30);
         Audio.hit();
+        Haptic.hit();
         if (e.hp <= 0) {
           this.spawnExplosion(e.x, e.y, e.type === 'warship');
           this.scoreValue += e.type === 'warship' ? 180 : 75;
+          Haptic.kill();
           if (e.rotor) e.rotor.destroy();
           e.destroy();
         }
@@ -283,6 +312,7 @@
         this.fuelValue = Math.min(100, this.fuelValue + 28);
         this.scoreValue += 60;
         Audio.pickup();
+        Haptic.fuel();
         this.sparkEmitter.setPosition(f.x, f.y);
         this.sparkEmitter.setParticleTint(0x00ffcc);
         this.sparkEmitter.explode(12);
@@ -304,11 +334,18 @@
           i.destroy();
         } else {
           Audio.hit();
+          Haptic.hit();
         }
       });
 
       this.physics.world.setBounds(0, 0, GAME_W, GAME_H);
       this.updateUi();
+      // Show hi-score on the start overlay
+      const hi = HiScore.get();
+      if (hi > 0) {
+        const p2 = ui.overlay.querySelectorAll('p');
+        if (p2.length > 0) p2[p2.length - 1].textContent = `Best: ${hi}  |  WASD/arrows + Space`;
+      }
 
       if (pendingStart) { pendingStart = false; this.startRun(); }
     }
@@ -520,10 +557,13 @@
       this.player.setVisible(false);
       this.shadow.setVisible(false);
       this.trailEmitter.stop();
+      Haptic.damage();
+      const isNew = HiScore.save(this.scoreValue);
+      const hi    = HiScore.get();
       ui.overlay.classList.remove('hidden');
       ui.overlay.querySelector('h1').textContent = 'Game Over';
-      ui.overlay.querySelector('p').textContent =
-        `Score: ${Math.floor(this.scoreValue)}. Press "Start" to try again.`;
+      ui.overlay.querySelector('p').textContent  =
+        `Score: ${Math.floor(this.scoreValue)}${isNew ? ' 🏆 New Record!' : ''} | Best: ${hi}`;
     }
 
     // ── damagePlayer ──────────────────────────────────────────────────────────
@@ -533,6 +573,7 @@
       this.player.invuln = 1.1;
       this.flash(0xff8c73, 95);
       this.spawnExplosion(this.player.x, this.player.y, true);
+      Haptic.damage();
       this.updateUi();
       if (this.livesValue <= 0) this.stopRun();
     }
@@ -586,12 +627,20 @@
         e.fireCd = Phaser.Math.FloatBetween(1.5, 3.5);
         e.setDepth(4);
 
-        // heli rotor
+        // heli rotor — use tweens for smooth spin
         if (type === 'heli') {
-          const rotorKey = this.textures.exists('a_rotor') ? 'a_rotor' : 'heli';
+          const rotorKey   = this.textures.exists('a_rotor') ? 'a_rotor' : 'heli';
           const rotorScale = rotorKey === 'a_rotor' ? this.svgScale * 1.8 : 0.6;
           e.rotor = this.add.image(e.x, e.y - 10, rotorKey)
-            .setAlpha(0.7).setDepth(5).setScale(rotorScale);
+            .setAlpha(0.75).setDepth(5).setScale(rotorScale);
+          // Continuous tween-driven spin
+          this.tweens.add({
+            targets:  e.rotor,
+            angle:    360,
+            duration: 420,
+            repeat:   -1,
+            ease:     'Linear'
+          });
         }
       }
     }
@@ -616,6 +665,36 @@
 
       const g = this.bg;
       g.clear();
+
+      // ── Parallax far-background trees (scroll at 30% speed) ────────────────────
+      const gf = this.bgFar;
+      gf.clear();
+      const farScroll = this.scroll * 0.3;
+      const isNight   = this.dayPhase === 2;
+      const farColor  = isNight ? 0x0c1a0c : 0x1a2e14;
+      for (let y = -16; y < GAME_H + 32; y += 14) {
+        const wy = farScroll + y;
+        const wc  = GAME_W * 0.5 + Math.sin(wy * 0.012) * 26 + Math.sin(wy * 0.0043) * 12;
+        const wrW = 92 + Math.sin(wy * 0.007) * 16;
+        const lx  = wc - wrW * 0.5;
+        const rx  = wc + wrW * 0.5;
+        // Far silhouette trees on left
+        const fp1 = Math.floor(wy * 0.06);
+        if (fp1 % 3 === 0 && lx > 8) {
+          const ftx = Math.max(2, lx - 18 - (fp1 % 9) * 2);
+          gf.fillStyle(farColor, 1);
+          gf.fillTriangle(ftx + 5, y - 14, ftx, y + 2, ftx + 10, y + 2);
+          gf.fillRect(ftx + 4, y + 2, 3, 6);
+        }
+        // Far silhouette trees on right
+        const fp2 = Math.floor(wy * 0.06 + 1.8);
+        if (fp2 % 3 === 0 && GAME_W - rx > 8) {
+          const ftx2 = Math.min(GAME_W - 12, rx + 8 + (fp2 % 9) * 2);
+          gf.fillStyle(farColor, 1);
+          gf.fillTriangle(ftx2 + 5, y - 14, ftx2, y + 2, ftx2 + 10, y + 2);
+          gf.fillRect(ftx2 + 4, y + 2, 3, 6);
+        }
+      }
 
       // ── Sky gradient at top ─────────────────────────────────────────────────────
       g.fillGradientStyle(0x1a3a5c, 0x1a3a5c, 0x233020, 0x233020, 1);
@@ -868,6 +947,35 @@
       this.scoreValue += dt * 18;
       this.wave       += dt;
       this.speed       = 105 + Math.min(48, this.wave * 1.6);
+
+      // ── Day/Night cycle ─────────────────────────────────────────────────────
+      // Phase advances every 60s of wave time; 4 phases: 1=day, 2=dusk, 3=night, 4=dawn
+      const PHASE_LEN = 60;
+      this.dayTime = (this.wave % PHASE_LEN) / PHASE_LEN;      // 0..1
+      this.dayPhase = Math.floor(this.wave / PHASE_LEN) % 4;   // 0=day,1=dusk,2=night,3=dawn
+
+      // Overlay tint & alpha by phase
+      let dayAlpha  = 0;
+      let dayColor  = 0x000030;
+      if (this.dayPhase === 0) { dayAlpha = 0; }              // full day
+      else if (this.dayPhase === 1) {                          // dusk: fade to orange-dark
+        dayAlpha = this.dayTime * 0.38;
+        dayColor = 0x2a0d00;
+        this.dayOverlay.setFillStyle(dayColor, dayAlpha);
+      } else if (this.dayPhase === 2) {                        // night
+        dayAlpha = 0.38 + this.dayTime * 0.10;
+        dayColor = 0x00001a;
+        this.dayOverlay.setFillStyle(dayColor, dayAlpha);
+      } else {                                                  // dawn: fade back
+        dayAlpha = Math.max(0, 0.48 - this.dayTime * 0.48);
+        dayColor = 0x1a0a00;
+        this.dayOverlay.setFillStyle(dayColor, dayAlpha);
+      }
+      // Water gets darker at night
+      const nightTint = this.dayPhase === 2
+        ? Phaser.Display.Color.ValueToColor(0x3355aa)
+        : Phaser.Display.Color.ValueToColor(0xffffff);
+      this.waterLayer.setTint(nightTint.color);
 
       this.updateUi();
     }
