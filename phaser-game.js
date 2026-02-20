@@ -465,6 +465,51 @@
       }
       g.generateTexture('water_tex', 32, 32);
 
+      // ── Island type 1: dense forest island ─────────────────────────────────
+      g.clear();
+      g.fillStyle(0x4ab8d4, 0.28); g.fillCircle(16, 16, 15);   // water shimmer
+      g.fillStyle(0xd4b454, 1);    g.fillCircle(16, 16, 12);   // sandy beach
+      g.fillStyle(0xc09c40, 0.55); g.fillCircle(18, 18, 7);    // sand shading
+      g.fillStyle(0x4a8c38, 1);    g.fillCircle(15, 14, 9);    // grass base
+      g.fillStyle(0x3a7030, 1);    g.fillCircle(14, 13, 6);    // dark grass
+      g.fillStyle(0x6c4428, 1);    g.fillRect(13, 7, 3, 7);   // tree trunk
+      g.fillStyle(0x2c6c28, 1);    g.fillCircle(15, 9, 6);     // foliage 1
+      g.fillStyle(0x3c8038, 0.9);  g.fillCircle(14, 7, 4);     // foliage 2
+      g.fillStyle(0x50a048, 0.7);  g.fillCircle(15, 5, 3);     // foliage top
+      g.generateTexture('isl1', 32, 32);
+
+      // ── Island type 2: elongated sandbar ────────────────────────────────────
+      g.clear();
+      g.fillStyle(0x4ab8d4, 0.24);
+      g.fillCircle(7, 16, 7); g.fillCircle(25, 16, 7);         // water edge caps
+      g.fillRect(7, 9, 18, 14);                                 // water edge body
+      g.fillStyle(0xdcbc58, 1);
+      g.fillCircle(8, 16, 6); g.fillCircle(24, 16, 6);         // sand caps
+      g.fillRect(8, 10, 16, 12);                                // sand body
+      g.fillStyle(0xa8904c, 0.5); g.fillCircle(22, 17, 5);     // sand shadow
+      g.fillStyle(0x58903c, 1);   g.fillCircle(9, 14, 4);      // left grass patch
+      g.fillStyle(0x447030, 1);   g.fillCircle(9, 13, 3);
+      g.fillStyle(0x6c4428, 1);   g.fillRect(8, 7, 2, 6);      // small tree
+      g.fillStyle(0x306028, 1);   g.fillCircle(9, 8, 4);
+      g.fillStyle(0x407833, 0.8); g.fillCircle(9, 6, 3);
+      g.generateTexture('isl2', 32, 32);
+
+      // ── Island type 3: ruins island ─────────────────────────────────────────
+      g.clear();
+      g.fillStyle(0x4ab8d4, 0.25); g.fillCircle(16, 16, 14);   // water shimmer
+      g.fillStyle(0xc8a84a, 1);    g.fillCircle(16, 16, 12);   // sandy base
+      g.fillStyle(0x4a8838, 1);    g.fillCircle(15, 16, 9);    // grass
+      g.fillStyle(0x386828, 1);    g.fillCircle(16, 17, 6);    // dark grass
+      g.fillStyle(0x8a8070, 1);    g.fillRect(11, 8, 4, 8);    // left wall
+      g.fillStyle(0x8a8070, 1);    g.fillRect(17, 8, 4, 8);    // right wall
+      g.fillStyle(0x8a8070, 1);    g.fillRect(11, 8, 10, 3);   // lintel
+      g.fillStyle(0xaaa090, 1);    g.fillRect(11, 8, 10, 1);   // stone highlight
+      g.fillStyle(0xaaa090, 1);    g.fillRect(11, 8, 1, 8);    // side highlight
+      g.fillStyle(0x282018, 1);    g.fillRect(13, 11, 6, 5);   // doorway
+      g.fillStyle(0x5e5848, 0.8);  g.fillRect(19, 10, 1, 4);   // wall crack
+      g.generateTexture('isl3', 32, 32);
+
+
       // fallback explosion frames (orange circles, if svg assets missing)
       const expColors = [0xff9900, 0xff6600, 0xff3300, 0xdd2200];
       expColors.forEach((c, idx) => {
@@ -732,10 +777,11 @@
         if (this.tex.fuel === 'a_fuel') f.setScale(this.svgScale * 1.1);
         f.setDepth(4);
       } else if (roll < 0.30) {
-        const i = this.islands.create(x, -16, this.tex.island);
+        const islKeys = ['isl1', 'isl2', 'isl3'];
+        const islKey  = islKeys[Math.floor(Math.random() * islKeys.length)];
+        const i = this.islands.create(x, -16, islKey);
         i.speed = this.speed * 0.48;
-        i.hp    = 2;
-        if (this.tex.island === 'a_island') i.setScale(this.svgScale * 1.1);
+        i.hp    = islKey === 'isl3' ? 3 : 2;  // ruins are tougher
         i.setDepth(3);
       } else {
         const types   = ['boat', 'heli', 'warship'];
@@ -1064,10 +1110,9 @@
         if (f.y > GAME_H + 20) f.destroy();
       });
 
-      // Move islands
+      // Move islands (no rotation — islands are fixed geological features)
       this.islands.children.each(i => {
         i.y += i.speed * dt;
-        i.angle = Math.sin((i.y + this.scroll) * 0.03) * 3;
         if (i.y > GAME_H + 24) i.destroy();
       });
 
@@ -1111,21 +1156,78 @@
       this.bridges = this.bridges.filter(br => {
         br.y += br.speed * dt;
         if (br.y > GAME_H + 30) { br.active = false; return false; }
-        // Draw bridge
-        const bridgeAlpha = 1;
-        bg.fillStyle(0x5c4a2a, bridgeAlpha);
-        bg.fillRect(br.lx - 4, br.y - 3, br.rx - br.lx + 8, 6);
-        bg.fillStyle(0x7a6338, 1);
-        bg.fillRect(br.lx - 2, br.y - 2, br.rx - br.lx + 4, 2);
-        // Pillars
-        const midX = (br.lx + br.rx) * 0.5;
-        for (const px of [br.lx + 6, midX, br.rx - 6]) {
-          bg.fillStyle(0x4a3a1e, 1);
-          bg.fillRect(px - 2, br.y, 4, 10);
+
+        const bW   = br.rx - br.lx;  // river span
+        const abW  = 18;             // abutment width (extends onto bank)
+        const dkH  = 8;             // deck thickness
+        const deckL = br.lx - abW;
+        const deckR = br.rx + abW;
+
+        // Shadow under arch into water
+        bg.fillStyle(0x000000, 0.20);
+        bg.fillRect(br.lx + 2, br.y + dkH, bW - 4, 7);
+
+        // Arch underside (darker, below deck, over river)
+        bg.fillStyle(0x3a2e1a, 0.90);
+        bg.fillRect(br.lx + 3, br.y + dkH - 1, bW - 6, 5);
+
+        // Left bank abutment
+        bg.fillStyle(0x5c534a, 1);
+        bg.fillRect(deckL, br.y - 3, abW + 1, dkH + 6);
+        bg.fillStyle(0x7a6e60, 1);
+        bg.fillRect(deckL + 1, br.y - 2, abW - 1, 2);
+        bg.fillStyle(0x3e3630, 1);
+        bg.fillRect(deckL, br.y + dkH + 2, abW + 1, 2);
+
+        // Right bank abutment
+        bg.fillStyle(0x5c534a, 1);
+        bg.fillRect(br.rx - 1, br.y - 3, abW + 1, dkH + 6);
+        bg.fillStyle(0x7a6e60, 1);
+        bg.fillRect(br.rx, br.y - 2, abW - 1, 2);
+        bg.fillStyle(0x3e3630, 1);
+        bg.fillRect(br.rx - 1, br.y + dkH + 2, abW + 1, 2);
+
+        // Bridge deck
+        bg.fillStyle(0x6a6052, 1);
+        bg.fillRect(deckL, br.y, deckR - deckL, dkH);
+
+        // Road surface top strip
+        bg.fillStyle(0x88786a, 1);
+        bg.fillRect(deckL + 1, br.y + 1, deckR - deckL - 2, 2);
+
+        // Guardrail top highlight
+        bg.fillStyle(0xb0a898, 0.85);
+        bg.fillRect(deckL, br.y, deckR - deckL, 1);
+
+        // Guardrail bottom shadow
+        bg.fillStyle(0x2e2820, 0.90);
+        bg.fillRect(deckL, br.y + dkH, deckR - deckL, 2);
+
+        // Dashed centre line
+        bg.fillStyle(0xf0e070, 0.70);
+        for (let dx = br.lx + 6; dx < br.rx - 10; dx += 14) {
+          bg.fillRect(dx, br.y + 3, 8, 1);
         }
-        // Collision check
-        const px = this.player.x, py = this.player.y;
-        if (this.player.invuln === 0 && py > br.y - 6 && py < br.y + 8 && px > br.lx - 2 && px < br.rx + 2) {
+
+        // Water pylons
+        const midX  = (br.lx + br.rx) * 0.5;
+        const pylons = bW > 60
+          ? [br.lx + bW * 0.28, midX, br.rx - bW * 0.28]
+          : [midX];
+        pylons.forEach(plx => {
+          bg.fillStyle(0x585044, 1);
+          bg.fillRect(plx - 5, br.y + dkH, 10, 3);     // cap
+          bg.fillStyle(0x48403a, 1);
+          bg.fillRect(plx - 3, br.y + dkH + 3, 7, 11); // shaft
+          bg.fillStyle(0x38302c, 1);
+          bg.fillRect(plx - 5, br.y + dkH + 13, 11, 3); // footing
+        });
+
+        // Collision (river span only)
+        const ppx = this.player.x, ppy = this.player.y;
+        if (this.player.invuln === 0 &&
+            ppy > br.y - 4 && ppy < br.y + dkH + 2 &&
+            ppx > br.lx - 2 && ppx < br.rx + 2) {
           this.damagePlayer();
         }
         return true;
