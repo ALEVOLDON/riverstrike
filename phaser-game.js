@@ -522,6 +522,17 @@
             ? 'linear-gradient(90deg, #ffb030, #ffe060)'
             : 'linear-gradient(90deg, #3ef07a, #61dafb)';
       }
+      // ── Power-up status chip
+      const puEl = document.getElementById('powerup-status');
+      if (puEl) {
+        if (this.shieldActive && this.shieldTimer > 0) {
+          puEl.textContent = `💠 SHIELD ${Math.ceil(this.shieldTimer)}s`;
+        } else if (this.doubleShotOn && this.doubleShotTimer > 0) {
+          puEl.textContent = `⚡ DOUBLE ${Math.ceil(this.doubleShotTimer)}s`;
+        } else {
+          puEl.textContent = '';
+        }
+      }
     }
 
     // ── Helper: flash screen ──────────────────────────────────────────────────
@@ -622,6 +633,17 @@
     // ── damagePlayer ──────────────────────────────────────────────────────────
     damagePlayer() {
       if (this.player.invuln > 0) return;
+      // Shield absorbs one hit
+      if (this.shieldActive) {
+        this.shieldActive = false;
+        this.shieldTimer  = 0;
+        this.player.invuln = 0.6;
+        this.flash(0x55aaff, 120);
+        this.cameras.main.shake(80, 0.008);
+        Haptic.hit();
+        this.updateUi();
+        return;
+      }
       this.livesValue--;
       this.player.invuln = 1.1;
       this.flash(0xff8c73, 95);
@@ -1014,7 +1036,16 @@
       // Move bullets
       this.playerBullets.children.each(b => {
         b.y += b.vy * dt;
-        if (b.y < -20) b.destroy();
+        if (b.y < -20) {
+          // Water splash: if bullet exits over the river, spawn a small splash
+          const rv = this.riverAt(0);
+          if (b.x > rv.center - rv.riverW * 0.5 && b.x < rv.center + rv.riverW * 0.5) {
+            this.sparkEmitter.setPosition(b.x, 2);
+            this.sparkEmitter.setParticleTint(0x7bcfef);
+            this.sparkEmitter.explode(4);
+          }
+          b.destroy();
+        }
       });
       this.enemyBullets.children.each(b => {
         b.x += b.vx * dt;
@@ -1125,13 +1156,13 @@
         if (this.doubleShotTimer <= 0) { this.doubleShotOn = false; }
       }
 
-      // ── Shield ring visual
-      if (this.shieldActive && this.player.invuln === 0) {
-        const sg = this.bg;
-        sg.lineStyle(2, 0x55aaff, 0.55 + 0.35 * Math.sin(this.wave * 8));
-        sg.strokeCircle(this.player.x, this.player.y, 14);
-        // Shield absorbs one hit
-        if (this.player.invuln > 0) this.shieldActive = false;
+      // ── Shield ring visual (drawn on wakeGfx so it's not wiped by drawBackground)
+      if (this.shieldActive) {
+        const pulse = 0.45 + 0.35 * Math.sin(this.wave * 10);
+        this.wakeGfx.lineStyle(2, 0x55aaff, pulse);
+        this.wakeGfx.strokeCircle(this.player.x, this.player.y, 15);
+        this.wakeGfx.lineStyle(1, 0xaaddff, pulse * 0.5);
+        this.wakeGfx.strokeCircle(this.player.x, this.player.y, 18);
       }
 
       // ── Night stars overlay (starsGfx cleared in drawBackground)
