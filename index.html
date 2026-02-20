@@ -60,25 +60,45 @@
     </div><!-- /.game-frame -->
 
     <div id="overlay" class="overlay">
-      <div class="overlay__plane" id="intro-plane">✈</div>
-      <h1>River Strike</h1>
-      <p>Arcade action — dodge, shoot, collect fuel &amp; power-ups.</p>
-      <p id="hi-line">WASD / arrows + Space</p>
 
-      <!-- Version selector -->
-      <div class="ver-select">
-        <span class="ver-select__label">VERSION</span>
-        <div class="ver-select__btns">
-          <button class="ver-btn ver-btn--active" onclick="void 0" title="Current version">
-            ▶ v2 — Phaser
-          </button>
-          <a class="ver-btn" href="v1/index.html" title="Classic Canvas edition">
-            v1 — Classic
-          </a>
+      <!-- ── INTRO section ──────────────────────────────────── -->
+      <div id="intro-section">
+        <div class="overlay__plane" id="intro-plane">✈</div>
+        <h1>River Strike</h1>
+        <p>Arcade action — dodge, shoot, collect fuel &amp; power-ups.</p>
+        <p id="hi-line">WASD / arrows + Space &nbsp;|&nbsp; P = pause</p>
+
+        <!-- Version selector -->
+        <div class="ver-select">
+          <span class="ver-select__label">VERSION</span>
+          <div class="ver-select__btns">
+            <button class="ver-btn ver-btn--active" onclick="void 0" title="Current version">
+              ▶ v2 — Phaser
+            </button>
+            <a class="ver-btn" href="v1/index.html" title="Classic Canvas edition">
+              v1 — Classic
+            </a>
+          </div>
         </div>
+
+        <button id="start">Start</button>
       </div>
 
-      <button id="start">Start</button>
+      <!-- ── GAME OVER section ──────────────────────────────── -->
+      <div id="go-section" class="hidden">
+        <div class="go-crash">💥</div>
+        <h1 id="go-title">Game Over</h1>
+        <div class="go-score-wrap">
+          <span class="go-score-label">SCORE</span>
+          <span id="go-score" class="go-score-value">0</span>
+        </div>
+        <div class="go-board">
+          <div class="go-board__title">LEADERBOARD</div>
+          <ol id="go-board-list" class="go-board__list"></ol>
+        </div>
+        <button id="go-restart">Play Again</button>
+      </div>
+
     </div>
   </div>
 

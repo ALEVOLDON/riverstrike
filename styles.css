@@ -290,7 +290,120 @@ html, body {
 .overlay button:hover { transform: scale(1.05); box-shadow: 0 0 32px rgba(80,230,190,0.6), 0 6px 22px rgba(0,0,0,0.5); }
 .overlay button:active { transform: scale(0.97); }
 
-.hidden { display: none; }
+.hidden { display: none !important; }
+
+/* ─── Game Over screen ─── */
+#go-section {
+  animation: go-in 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
+}
+@keyframes go-in {
+  from { opacity: 0; transform: translateY(24px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.go-crash {
+  font-size: 48px;
+  animation: go-crash-anim 0.5s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
+  filter: drop-shadow(0 0 16px rgba(255,120,40,0.9));
+}
+@keyframes go-crash-anim {
+  0%   { transform: scale(0.2) rotate(-30deg); opacity: 0; }
+  60%  { transform: scale(1.25) rotate(8deg); }
+  100% { transform: scale(1) rotate(0); opacity: 1; }
+}
+
+#go-title {
+  margin: 0;
+  font-family: 'Orbitron', monospace;
+  font-size: clamp(20px, 6vw, 34px);
+  letter-spacing: 4px;
+  color: #ff7755;
+  text-shadow: 0 0 18px rgba(255,100,60,0.6), 0 0 36px rgba(255,60,20,0.3);
+}
+
+.go-score-wrap {
+  display: flex; flex-direction: column; align-items: center;
+  margin: 4px 0;
+}
+.go-score-label {
+  font-family: 'Orbitron', monospace;
+  font-size: 9px; letter-spacing: 3px; color: rgba(180,230,255,0.5);
+}
+.go-score-value {
+  font-family: 'Orbitron', monospace;
+  font-size: clamp(30px, 10vw, 48px); font-weight: 800;
+  color: #ffe060;
+  text-shadow: 0 0 22px rgba(255,220,60,0.65);
+  animation: go-score-pop 0.45s 0.2s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+@keyframes go-score-pop {
+  from { transform: scale(0.6); opacity: 0; }
+  to   { transform: scale(1);   opacity: 1; }
+}
+
+.go-board {
+  width: 100%; max-width: 240px;
+  background: rgba(10,30,50,0.7);
+  border: 1px solid rgba(80,160,255,0.2);
+  border-radius: 8px;
+  overflow: hidden;
+  margin: 4px 0;
+}
+.go-board__title {
+  font-family: 'Orbitron', monospace;
+  font-size: 9px; letter-spacing: 3px;
+  color: rgba(120,200,255,0.5);
+  padding: 6px 0 4px;
+  text-align: center;
+  border-bottom: 1px solid rgba(80,160,255,0.15);
+}
+.go-board__list {
+  list-style: none; margin: 0; padding: 4px 0;
+}
+.go-board__list li {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 5px 14px;
+  font-family: 'Orbitron', monospace;
+  font-size: 12px; font-weight: 700;
+  color: #c8e8ff;
+  opacity: 0;
+  animation: go-row-in 0.35s ease both;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+  transition: background 0.2s;
+}
+.go-board__list li:last-child { border-bottom: none; }
+.go-board__list li.gold   { color: #ffe060; background: rgba(255,220,60,0.07); }
+.go-board__list li.silver { color: #d0e8f8; background: rgba(180,220,255,0.04); }
+.go-board__list li.bronze { color: #f0b878; background: rgba(220,160,80,0.04); }
+.go-board__list li.new-entry { animation: go-row-in 0.35s ease both, pulse-new 0.5s 0.4s ease; }
+@keyframes go-row-in {
+  from { opacity: 0; transform: translateX(-14px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+@keyframes pulse-new {
+  0%,100% { background: rgba(255,220,60,0.07); }
+  50%      { background: rgba(255,220,60,0.22); }
+}
+.go-rank { opacity: 0.55; min-width: 22px; }
+.go-pts  { font-size: 14px; }
+
+#go-restart {
+  justify-self: center; margin-top: 4px;
+  min-width: 160px; padding: 11px 18px;
+  border: 0; border-radius: 8px;
+  font-family: 'Orbitron', monospace;
+  font-size: 14px; font-weight: 800;
+  color: #021a10;
+  background: linear-gradient(135deg, #80ffce, #40d0ff);
+  box-shadow: 0 0 22px rgba(80,230,190,0.45), 0 4px 18px rgba(0,0,0,0.4);
+  cursor: pointer; letter-spacing: 2px;
+  transition: transform 120ms ease, box-shadow 120ms ease;
+}
+#go-restart:hover { transform: scale(1.05); box-shadow: 0 0 32px rgba(80,230,190,0.6); }
+#go-restart:active { transform: scale(0.97); }
+
+
 
 /* Power-up status chip */
 .powerup-status {

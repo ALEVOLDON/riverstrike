@@ -796,21 +796,42 @@
       this.shadow.setVisible(false);
       this.trailEmitter.stop();
       Haptic.damage();
-      // ── Top-5 leaderboard
+
+      // ── Save and build leaderboard
       const score = Math.floor(this.scoreValue);
       const board = Leaderboard.add(score);
-      const isNew = board[0].score === score && board[0].ts === board[0].ts; // just saved
-      const hi    = board[0].score;
+
+      // Show overlay in Game Over mode
       ui.overlay.classList.remove('hidden');
-      ui.overlay.querySelector('h1').textContent = 'Game Over';
-      const hiLine = document.getElementById('hi-line');
-      if (hiLine) {
-        hiLine.innerHTML = board
-          .map((e, i) => `${['🥇','🥈','🥉','4.','5.'][i] || ''} ${e.score}`)
-          .join(' &nbsp; ');
+      document.getElementById('intro-section').classList.add('hidden');
+      const goSection = document.getElementById('go-section');
+      goSection.classList.remove('hidden');
+      // Force CSS animation to replay by removing/re-adding
+      goSection.style.animation = 'none';
+      void goSection.offsetWidth;  // reflow
+      goSection.style.animation = '';
+
+      // Fill score
+      const goScore = document.getElementById('go-score');
+      if (goScore) goScore.textContent = score.toLocaleString();
+
+      // Fill leaderboard
+      const medals  = ['🥇', '🥈', '🥉', '4', '5'];
+      const classes = ['gold', 'silver', 'bronze', '', ''];
+      const list    = document.getElementById('go-board-list');
+      if (list) {
+        list.innerHTML = '';
+        board.forEach((entry, i) => {
+          const li = document.createElement('li');
+          li.className = classes[i] || '';
+          if (entry.score === score) li.classList.add('new-entry');
+          li.style.animationDelay = `${0.15 + i * 0.1}s`;
+          li.innerHTML =
+            `<span class="go-rank">${medals[i]}</span>` +
+            `<span class="go-pts">${entry.score.toLocaleString()}</span>`;
+          list.appendChild(li);
+        });
       }
-      ui.overlay.querySelector('p').textContent =
-        `Score: ${score}${score === hi && board.length === 1 ? ' 🏆 New Record!' : ''}`;
     }
 
     // ── damagePlayer ──────────────────────────────────────────────────────────
@@ -1645,6 +1666,19 @@
     Audio.unlock();
     bootGame();
     ui.overlay.classList.add('hidden');
+    // Reset overlay state for next time
+    document.getElementById('intro-section').classList.remove('hidden');
+    document.getElementById('go-section').classList.add('hidden');
+    if (sceneRef) sceneRef.startRun();
+    else pendingStart = true;
+  });
+
+  // Play Again button (game over screen)
+  document.getElementById('go-restart').addEventListener('click', () => {
+    Audio.unlock();
+    ui.overlay.classList.add('hidden');
+    document.getElementById('intro-section').classList.remove('hidden');
+    document.getElementById('go-section').classList.add('hidden');
     if (sceneRef) sceneRef.startRun();
     else pendingStart = true;
   });

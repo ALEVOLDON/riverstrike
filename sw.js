@@ -1,4 +1,4 @@
-const CACHE  = 'river-strike-v5';
+const CACHE  = 'river-strike-v6';
 const ASSETS = ['/', '/index.html', '/styles.css', '/phaser-game.js',
   'https://cdn.jsdelivr.net/npm/phaser@3.90.0/dist/phaser.min.js'];
 
