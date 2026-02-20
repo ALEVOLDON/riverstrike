@@ -30,6 +30,23 @@
     }
   };
 
+  // ── Leaderboard (top-5) ────────────────────────────────────────────────────────
+  const Leaderboard = {
+    key: 'riverStrike_lb',
+    get() {
+      try { return JSON.parse(localStorage.getItem(this.key) || '[]'); }
+      catch { return []; }
+    },
+    add(score) {
+      const board = this.get();
+      board.push({ score, ts: Date.now() });
+      board.sort((a, b) => b.score - a.score);
+      const top = board.slice(0, 5);
+      localStorage.setItem(this.key, JSON.stringify(top));
+      return top;
+    }
+  };
+
   // ── Haptic feedback ───────────────────────────────────────────────────────────────────────
   const Haptic = {
     tap(pattern = [40])  { if (navigator.vibrate) navigator.vibrate(pattern); },
@@ -182,6 +199,15 @@
       this.bombPending   = false;
       // ── Fuel alarm
       this.fuelAlarmCd   = 0;
+      // ── Pause
+      this.paused        = false;
+      // ── Boss
+      this.bossCd        = 120;  // first boss after 120s
+      this.bossActive    = false;
+      // ── Wave banner
+      this.lastWaveBanner = 0;
+      // ── Damage smoke
+      this.damageSmokeTimer = 0;
 
       this.keys = this.input.keyboard.addKeys({
         left:  Phaser.Input.Keyboard.KeyCodes.LEFT,
@@ -192,7 +218,8 @@
         d:     Phaser.Input.Keyboard.KeyCodes.D,
         w:     Phaser.Input.Keyboard.KeyCodes.W,
         s:     Phaser.Input.Keyboard.KeyCodes.S,
-        fire:  Phaser.Input.Keyboard.KeyCodes.SPACE
+        fire:  Phaser.Input.Keyboard.KeyCodes.SPACE,
+        pause: Phaser.Input.Keyboard.KeyCodes.P
       });
 
       this.makeTextures();
@@ -366,6 +393,15 @@
         this.damagePlayer();
       });
 
+      // Kamikaze enemies damage player on contact
+      this.physics.add.overlap(this.player, this.enemies, (_p, e) => {
+        if (e.type !== 'kamikaze') return;
+        this.spawnExplosion(e.x, e.y, false);
+        if (e.rotor) e.rotor.destroy();
+        e.destroy();
+        this.damagePlayer();
+      });
+
       this.physics.add.overlap(this.playerBullets, this.islands, (b, i) => {
         b.destroy();
         i.hp -= 1;
@@ -382,11 +418,13 @@
 
       this.physics.world.setBounds(0, 0, GAME_W, GAME_H);
       this.updateUi();
-      // Show hi-score on the start overlay
-      const hi = HiScore.get();
-      if (hi > 0) {
-        const p2 = ui.overlay.querySelectorAll('p');
-        if (p2.length > 0) p2[p2.length - 1].textContent = `Best: ${hi}  |  WASD/arrows + Space`;
+      // Show leaderboard on the start overlay
+      const board = Leaderboard.get();
+      const hiLine = document.getElementById('hi-line');
+      if (hiLine && board.length > 0) {
+        hiLine.innerHTML = board
+          .map((e, i) => `${['🥇','🥈','🥉','4.','5.'][i] || ''} ${e.score}`)
+          .join(' &nbsp; ');
       }
 
       if (pendingStart) { pendingStart = false; this.startRun(); }
@@ -509,6 +547,31 @@
       g.fillStyle(0x5e5848, 0.8);  g.fillRect(19, 10, 1, 4);   // wall crack
       g.generateTexture('isl3', 32, 32);
 
+      // ── Boss cruiser texture (60x40) ──────────────────────────────────
+      g.clear();
+      // Hull
+      g.fillStyle(0x2a3840, 1); g.fillRect(10, 4, 40, 28);
+      g.fillStyle(0x1a2830, 1); g.fillRect(15, 2, 30, 5);     // bow
+      g.fillStyle(0x344c5a, 1); g.fillRect(12, 8, 36, 18);    // deck lighter
+      // Armour stripe
+      g.fillStyle(0x4a6878, 0.8); g.fillRect(12, 8, 36, 2);
+      g.fillStyle(0x142030, 0.9); g.fillRect(12, 28, 36, 2);  // waterline
+      // Superstructure
+      g.fillStyle(0x3c5060, 1); g.fillRect(22, 4, 16, 12);
+      g.fillStyle(0x4e6678, 1); g.fillRect(24, 2, 12, 4);
+      // Main cannons (3 guns)
+      g.fillStyle(0x1e2c38, 1);
+      g.fillRect(14, 12, 8, 3);   // left gun
+      g.fillRect(38, 12, 8, 3);   // right gun
+      g.fillRect(26, 1, 8, 4);    // centre top gun
+      // Turret details
+      g.fillStyle(0x607888, 1);
+      g.fillRect(24, 8, 12, 6);   // bridge window
+      g.fillStyle(0x8ab0c0, 0.5);
+      g.fillRect(25, 9, 10, 2);
+      // HP bar bg (red bottom strip as hint)
+      g.fillStyle(0xcc2222, 0.9); g.fillRect(12, 30, 36, 2);
+      g.generateTexture('boss_tex', 60, 40);
 
       // fallback explosion frames (orange circles, if svg assets missing)
       const expColors = [0xff9900, 0xff6600, 0xff3300, 0xdd2200];
@@ -634,6 +697,11 @@
       this.shieldActive = false; this.shieldTimer = 0;
       this.doubleShotOn = false; this.doubleShotTimer = 0;
       this.fuelAlarmCd  = 0;
+      this.paused       = false;
+      this.bossCd       = 120;
+      this.bossActive   = false;
+      this.lastWaveBanner = 0;
+      this.damageSmokeTimer = 0;
       // Clear bridges
       this.bridges.forEach(b => { if (b.gfx) b.gfx.destroy(); });
       this.bridges = [];
@@ -667,12 +735,21 @@
       this.shadow.setVisible(false);
       this.trailEmitter.stop();
       Haptic.damage();
-      const isNew = HiScore.save(this.scoreValue);
-      const hi    = HiScore.get();
+      // ── Top-5 leaderboard
+      const score = Math.floor(this.scoreValue);
+      const board = Leaderboard.add(score);
+      const isNew = board[0].score === score && board[0].ts === board[0].ts; // just saved
+      const hi    = board[0].score;
       ui.overlay.classList.remove('hidden');
       ui.overlay.querySelector('h1').textContent = 'Game Over';
-      ui.overlay.querySelector('p').textContent  =
-        `Score: ${Math.floor(this.scoreValue)}${isNew ? ' 🏆 New Record!' : ''} | Best: ${hi}`;
+      const hiLine = document.getElementById('hi-line');
+      if (hiLine) {
+        hiLine.innerHTML = board
+          .map((e, i) => `${['🥇','🥈','🥉','4.','5.'][i] || ''} ${e.score}`)
+          .join(' &nbsp; ');
+      }
+      ui.overlay.querySelector('p').textContent =
+        `Score: ${score}${score === hi && board.length === 1 ? ' 🏆 New Record!' : ''}`;
     }
 
     // ── damagePlayer ──────────────────────────────────────────────────────────
@@ -691,11 +768,51 @@
       }
       this.livesValue--;
       this.player.invuln = 1.1;
+      this.damageSmokeTimer = 4.0;  // smoke trail for 4 seconds
       this.flash(0xff8c73, 95);
       this.spawnExplosion(this.player.x, this.player.y, true);
       Haptic.damage();
       this.updateUi();
       if (this.livesValue <= 0) this.stopRun();
+    }
+
+    // ── showWaveBanner ────────────────────────────────────────────────────────
+    showWaveBanner(waveNum) {
+      const txt = this.add.text(GAME_W * 0.5, GAME_H * 0.5 - 20, `WAVE  ${waveNum}`, {
+        fontFamily: 'Orbitron, monospace', fontSize: '18px',
+        color: '#ffe060', stroke: '#000', strokeThickness: 4
+      }).setDepth(35).setOrigin(0.5, 0.5).setAlpha(0);
+      this.tweens.add({
+        targets: txt, alpha: 1, duration: 300, ease: 'Cubic.easeOut',
+        onComplete: () => {
+          this.tweens.add({ targets: txt, alpha: 0, duration: 500, delay: 800,
+            onComplete: () => txt.destroy() });
+        }
+      });
+    }
+
+    // ── spawnBoss ─────────────────────────────────────────────────────────────
+    spawnBoss() {
+      if (this.bossActive) return;
+      const r  = this.riverAt(0);
+      const bx = r.center;
+      const b  = this.enemies.create(bx, -32, 'boss_tex');
+      b.type    = 'boss';
+      b.hp      = 12;
+      b.speed   = this.speed * 0.28;
+      b.vx      = 0;
+      b.fireCd  = 1.2;
+      b.setDepth(8);
+      this.bossActive = true;
+      // Banner
+      const warn = this.add.text(GAME_W * 0.5, GAME_H * 0.5 - 40, '⚠ BOSS ⚠', {
+        fontFamily: 'Orbitron, monospace', fontSize: '16px',
+        color: '#ff4444', stroke: '#000', strokeThickness: 4
+      }).setDepth(36).setOrigin(0.5).setAlpha(0);
+      this.tweens.add({ targets: warn, alpha: 1, duration: 200, yoyo: true,
+        repeat: 4, onComplete: () => warn.destroy() });
+      Audio.explode(true);
+      this.cameras.main.shake(200, 0.022);
     }
 
     // ── showCombo ─────────────────────────────────────────────────────────────
@@ -770,6 +887,21 @@
 
       if (this.wave > 20 && Math.random() < 0.06) { this.spawnBridge(); return; }
       if (Math.random() < 0.05) { this.spawnPowerup(x); return; }
+      // Kamikaze heli: 8% chance after wave 40
+      if (this.wave > 40 && Math.random() < 0.08) {
+        const e = this.enemies.create(x, -16, this.tex.heli || 'heli');
+        e.type   = 'kamikaze';
+        e.hp     = 2;
+        e.speed  = this.speed * 0.55;
+        e.vx     = 0;
+        e.fireCd = 999;
+        e.setDepth(5);
+        const rk = this.textures.exists('a_rotor') ? 'a_rotor' : 'heli';
+        e.rotor = this.add.image(x, -26, rk).setAlpha(0.75).setDepth(6)
+                    .setScale(this.textures.exists('a_rotor') ? this.svgScale * 1.8 : 0.6);
+        this.tweens.add({ targets: e.rotor, angle: 360, duration: 280, repeat: -1, ease: 'Linear' });
+        return;
+      }
 
       if (roll < 0.18) {
         const f = this.fuels.create(x, -16, this.tex.fuel);
@@ -827,14 +959,15 @@
     }
 
     // ── shootFromEnemy ────────────────────────────────────────────────────────
-    shootFromEnemy(e) {
+    shootFromEnemy(e, angleOffsetDeg = 0) {
       const dx = this.player.x - e.x;
       const dy = this.player.y - e.y;
-      const len = Math.hypot(dx, dy) || 1;
-      const spd = 90;
+      const baseAngle = Math.atan2(dy, dx);
+      const angle = baseAngle + (angleOffsetDeg * Math.PI / 180);
+      const spd = e.type === 'boss' ? 110 : 90;
       const b = this.enemyBullets.create(e.x, e.y + 8, 'ebullet');
-      b.vx = (dx / len) * spd;
-      b.vy = (dy / len) * spd;
+      b.vx = Math.cos(angle) * spd;
+      b.vy = Math.sin(angle) * spd;
       b.setDepth(5);
     }
 
@@ -1017,6 +1150,21 @@
     update(_time, delta) {
       const dt = Math.min(0.034, delta / 1000);
 
+      // ── Pause toggle
+      if (Phaser.Input.Keyboard.JustDown(this.keys.pause) && this.running) {
+        this.paused = !this.paused;
+        if (this.paused) {
+          const pauseTxt = this.add.text(GAME_W * 0.5, GAME_H * 0.5, 'PAUSED', {
+            fontFamily: 'Orbitron, monospace', fontSize: '22px',
+            color: '#ffe060', stroke: '#000', strokeThickness: 5
+          }).setDepth(40).setOrigin(0.5).setName('pauseLabel');
+        } else {
+          const lbl = this.children.getByName('pauseLabel');
+          if (lbl) lbl.destroy();
+        }
+      }
+      if (this.paused) return;
+
       if (this.running) {
         this.trailEmitter.start();
         Audio.updateMusic(dt, this.speed);
@@ -1054,13 +1202,13 @@
       if (firing && this.playerShotCd <= 0) {
         this.playerShotCd = 0.13;
         const b = this.playerBullets.create(this.player.x, this.player.y - 10, 'pbullet');
-        b.vy = -250; b.setDepth(6);
+        b.vy = -250; b.vx = 0; b.setDepth(6);
         if (this.doubleShotOn) {
-          // Side bullets for double-shot
-          const b2 = this.playerBullets.create(this.player.x - 6, this.player.y - 6, 'pbullet');
-          b2.vy = -250; b2.setDepth(6);
-          const b3 = this.playerBullets.create(this.player.x + 6, this.player.y - 6, 'pbullet');
-          b3.vy = -250; b3.setDepth(6);
+          // Angled spread bullets
+          const b2 = this.playerBullets.create(this.player.x - 5, this.player.y - 6, 'pbullet');
+          b2.vx = -55; b2.vy = -240; b2.setDepth(6);
+          const b3 = this.playerBullets.create(this.player.x + 5, this.player.y - 6, 'pbullet');
+          b3.vx =  55; b3.vy = -240; b3.setDepth(6);
         }
         this.emitSparks(this.player.x, this.player.y - 10, 1);
         Audio.shoot();
@@ -1079,13 +1227,14 @@
         this.spawnEnemyOrFuel();
       }
 
-      // Move bullets
+      // Move bullets (player)
       this.playerBullets.children.each(b => {
+        b.x += (b.vx || 0) * dt;
         b.y += b.vy * dt;
-        if (b.y < -20) {
+        if (b.y < -20 || b.x < -10 || b.x > GAME_W + 10) {
           // Water splash: if bullet exits over the river, spawn a small splash
           const rv = this.riverAt(0);
-          if (b.x > rv.center - rv.riverW * 0.5 && b.x < rv.center + rv.riverW * 0.5) {
+          if (b.x > rv.center - rv.riverW * 0.5 && b.x < rv.center + rv.riverW * 0.5 && b.y < 10) {
             this.sparkEmitter.setPosition(b.x, 2);
             this.sparkEmitter.setParticleTint(0x7bcfef);
             this.sparkEmitter.explode(4);
@@ -1121,17 +1270,46 @@
         const rv  = this.riverAt(e.y);
         const el  = rv.center - rv.riverW * 0.5 + 12;
         const er  = rv.center + rv.riverW * 0.5 - 12;
-        e.x += e.vx * dt;
-        e.y += e.speed * dt;
-        if (e.rotor) { e.rotor.x = e.x; e.rotor.y = e.y - 10; }
-        if (e.x < el || e.x > er) { e.vx *= -1; e.x = Phaser.Math.Clamp(e.x, el, er); }
-        if (e.type === 'heli') e.angle = Math.sin((e.y + this.scroll) * 0.08) * 4;
-        e.fireCd -= dt;
-        if (e.fireCd <= 0 && e.y > 20 && e.y < GAME_H - 35) {
-          e.fireCd = (e.type === 'warship' ? 2.8 : 3.2) + Phaser.Math.FloatBetween(0.4, 1.2);
-          if (this.enemyBullets.countActive(true) < 6 && Math.random() > 0.55) this.shootFromEnemy(e);
+        if (e.type === 'kamikaze') {
+          // Dive toward player
+          const dx = this.player.x - e.x;
+          const dy = this.player.y - e.y;
+          const len = Math.hypot(dx, dy) || 1;
+          const spd = e.speed * 1.8;
+          e.x += (dx / len) * spd * dt;
+          e.y += (dy / len) * spd * dt;
+          e.angle = Math.atan2(dx, -dy) * 180 / Math.PI;
+          if (e.rotor) { e.rotor.x = e.x; e.rotor.y = e.y - 10; }
+        } else if (e.type === 'boss') {
+          // Slow down descent, sweep left/right
+          e.x += Math.sin(this.wave * 1.2) * 40 * dt;
+          e.y += e.speed * dt;
+          e.x = Phaser.Math.Clamp(e.x, el + 10, er - 10);
+        } else {
+          e.x += e.vx * dt;
+          e.y += e.speed * dt;
+          if (e.rotor) { e.rotor.x = e.x; e.rotor.y = e.y - 10; }
+          if (e.x < el || e.x > er) { e.vx *= -1; e.x = Phaser.Math.Clamp(e.x, el, er); }
+          if (e.type === 'heli') e.angle = Math.sin((e.y + this.scroll) * 0.08) * 4;
         }
-        if (e.y > GAME_H + 28) { if (e.rotor) e.rotor.destroy(); e.destroy(); }
+        e.fireCd -= dt;
+        if (e.fireCd <= 0 && e.y > 20 && e.y < GAME_H - 35 && e.type !== 'kamikaze') {
+          if (e.type === 'boss') {
+            // Boss fires 3 bullets in a spread
+            e.fireCd = 1.4 + Phaser.Math.FloatBetween(0.2, 0.8);
+            [-1, 0, 1].forEach(spread => {
+              if (this.enemyBullets.countActive(true) < 12) this.shootFromEnemy(e, spread * 30);
+            });
+          } else {
+            e.fireCd = (e.type === 'warship' ? 2.8 : 3.2) + Phaser.Math.FloatBetween(0.4, 1.2);
+            if (this.enemyBullets.countActive(true) < 8 && Math.random() > 0.55) this.shootFromEnemy(e, 0);
+          }
+        }
+        if (e.y > GAME_H + 28) {
+          if (e.rotor) e.rotor.destroy();
+          if (e.type === 'boss') this.bossActive = false;
+          e.destroy();
+        }
       });
 
       // ── Move power-ups
@@ -1241,6 +1419,27 @@
       this.scoreValue += dt * 18;
       this.wave       += dt;
       this.speed       = 105 + Math.min(48, this.wave * 1.6);
+
+      // ── Boss cooldown
+      this.bossCd -= dt;
+      if (this.bossCd <= 0 && !this.bossActive) {
+        this.spawnBoss();
+        this.bossCd = 120 + Math.random() * 30;
+      }
+
+      // ── Wave banner every 30s
+      const waveNum = Math.floor(this.wave / 30) + 1;
+      if (waveNum > this.lastWaveBanner) {
+        this.lastWaveBanner = waveNum;
+        if (waveNum > 1) this.showWaveBanner(waveNum);
+      }
+
+      // ── Damage smoke trail
+      if (this.damageSmokeTimer > 0) {
+        this.damageSmokeTimer -= dt;
+        this.explosionEmitter.setPosition(this.player.x, this.player.y + 8);
+        this.explosionEmitter.explode(1);
+      }
 
       // ── Combo decay
       if (this.comboTimer > 0) {
