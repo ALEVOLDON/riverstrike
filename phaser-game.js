@@ -139,6 +139,39 @@
       setTimeout(() => this.playTone(1600, 0.1, 'sine', 0.12, this.sfx, 0.005, 0.12), 70);
     },
 
+    shieldHum() {
+      // Short electric hum pulse — call each frame shield is active
+      if (!this.ctx || this.ctx.state !== 'running') return;
+      const t = this.ctx.currentTime;
+      const o = this.ctx.createOscillator();
+      const g = this.ctx.createGain();
+      o.type = 'sine'; o.frequency.value = 320;
+      g.gain.setValueAtTime(0.012, t);
+      g.gain.exponentialRampToValueAtTime(0.001, t + 0.06);
+      o.connect(g); g.connect(this.sfx);
+      o.start(t); o.stop(t + 0.08);
+    },
+
+    bridgeScrape() {
+      // Metal scrape noise on bridge collision
+      if (!this.ctx || this.ctx.state !== 'running') return;
+      const t = this.ctx.currentTime;
+      const sz  = Math.floor(this.ctx.sampleRate * 0.18);
+      const buf = this.ctx.createBuffer(1, sz, this.ctx.sampleRate);
+      const d = buf.getChannelData(0);
+      for (let i = 0; i < sz; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / sz);
+      const src = this.ctx.createBufferSource();
+      src.buffer = buf;
+      const hp = this.ctx.createBiquadFilter();
+      hp.type = 'highpass'; hp.frequency.value = 1200;
+      const g = this.ctx.createGain();
+      g.gain.setValueAtTime(0.35, t);
+      g.gain.exponentialRampToValueAtTime(0.001, t + 0.18);
+      src.connect(hp); hp.connect(g); g.connect(this.sfx);
+      src.start(t);
+      this.playTone(220, 0.15, 'sawtooth', 0.06, this.sfx, 0.002, 0.1);
+    },
+
     updateMusic(dt, speed) {
       if (!this.ctx || this.ctx.state !== 'running') return;
       this.musicState.timer -= dt;
@@ -440,21 +473,49 @@
       g.fillStyle(0x61cbff, 1); g.fillRect(6, 6, 4, 6);
       g.generateTexture('jet', 16, 16);
 
-      // boat
-      g.clear(); g.fillStyle(0x6f7f92, 1); g.fillTriangle(8, 1, 14, 15, 2, 15);
-      g.fillStyle(0xff6f3d, 1); g.fillRect(7, 7, 2, 5);
-      g.generateTexture('boat', 16, 16);
+      // ── boat (20x16) — patrol boat with hull, cabin, and gun
+      g.clear();
+      g.fillStyle(0x3c6070, 1);
+      g.fillTriangle(10, 1, 19, 15, 1, 15);              // hull triangle
+      g.fillStyle(0x2a4a58, 1); g.fillRect(6, 8, 8, 5);  // cabin
+      g.fillStyle(0x4a7888, 0.8); g.fillRect(7, 9, 6, 2); // cabin window
+      g.fillStyle(0xcc4422, 1); g.fillRect(9, 4, 2, 6);  // gun barrel
+      g.fillStyle(0x8a5020, 1); g.fillRect(8, 9, 4, 3);  // gun base
+      g.fillStyle(0x1a3040, 0.7); g.fillRect(2, 14, 16, 2); // waterline
+      g.generateTexture('boat', 20, 16);
 
-      // heli
-      g.clear(); g.fillStyle(0xe9ca66, 1); g.fillRoundedRect(2, 6, 12, 6, 2);
-      g.fillStyle(0x2f4b61, 1); g.fillRect(6, 3, 4, 3);
-      g.generateTexture('heli', 16, 16);
+      // ── heli (24x14) — gunship helicopter, top-down view
+      g.clear();
+      g.fillStyle(0x5a7040, 1); g.fillRoundedRect(4, 4, 16, 7, 2); // body
+      g.fillStyle(0x3a5030, 1); g.fillRoundedRect(6, 5, 12, 5, 2); // body shadow
+      g.fillStyle(0x8ab878, 0.6); g.fillRect(7, 5, 8, 2);           // cockpit glass
+      g.fillStyle(0x4c6838, 1); g.fillRect(18, 6, 6, 2);            // tail boom
+      g.fillStyle(0x3a5028, 1); g.fillRect(22, 5, 2, 4);            // tail fin
+      g.fillStyle(0xb0c890, 0.4); g.fillRect(0, 6, 24, 2);          // rotor disc
+      g.fillStyle(0x283820, 1); g.fillCircle(9, 7, 2);               // rotor hub
+      g.fillStyle(0x3c5030, 1); g.fillRect(3, 9, 3, 2);              // left skid
+      g.fillStyle(0x3c5030, 1); g.fillRect(18, 9, 3, 2);             // right skid
+      g.fillStyle(0xff3333, 0.9); g.fillRect(10, 3, 2, 2);           // gun sight
+      g.generateTexture('heli', 24, 14);
 
-      // warship
-      g.clear(); g.fillStyle(0x4f6070, 1); g.fillRect(1, 6, 14, 8);
-      g.fillStyle(0x2f3f4d, 1); g.fillRect(5, 3, 6, 3);
-      g.fillStyle(0xff6d3f, 1); g.fillRect(7, 6, 2, 4);
-      g.generateTexture('warship', 16, 16);
+      // ── warship (28x18) — heavy gunboat, top-down
+      g.clear();
+      g.fillStyle(0x3a4e5c, 1); g.fillRect(3, 3, 22, 14);            // hull base
+      g.fillStyle(0x1e3040, 1); g.fillTriangle(14, 0, 25, 3, 3, 3);  // bow
+      g.fillStyle(0x4a6072, 1); g.fillRect(5, 5, 18, 9);             // deck lighter
+      g.fillStyle(0x1e3040, 0.8); g.fillRect(3, 15, 22, 3);           // stern/waterline
+      g.fillStyle(0x2a3e50, 1); g.fillRect(9, 4, 10, 7);             // superstructure
+      g.fillStyle(0x3c5264, 1); g.fillRect(11, 3, 6, 3);             // bridge
+      g.fillStyle(0x6a8898, 0.5); g.fillRect(12, 3, 4, 2);           // bridge window
+      g.fillStyle(0x1a2c3c, 1);
+      g.fillRect(4, 8, 7, 3);    // left main gun
+      g.fillRect(17, 8, 7, 3);   // right main gun
+      g.fillRect(12, 1, 4, 4);   // bow gun
+      g.fillStyle(0xcc3333, 0.8); g.fillRect(5, 9, 5, 1);            // left tracer
+      g.fillStyle(0xcc3333, 0.8); g.fillRect(18, 9, 5, 1);           // right tracer
+      g.fillStyle(0x5a7888, 0.6); g.fillRect(6, 5, 3, 2);            // AA left
+      g.fillStyle(0x5a7888, 0.6); g.fillRect(19, 5, 3, 2);           // AA right
+      g.generateTexture('warship', 28, 18);
 
       // fuel
       g.clear(); g.fillStyle(0x9ef2d0, 1); g.fillCircle(8, 8, 7);
@@ -1406,6 +1467,7 @@
         if (this.player.invuln === 0 &&
             ppy > br.y - 4 && ppy < br.y + dkH + 2 &&
             ppx > br.lx - 2 && ppx < br.rx + 2) {
+          Audio.bridgeScrape();
           this.damagePlayer();
         }
         return true;
@@ -1464,6 +1526,9 @@
         this.wakeGfx.strokeCircle(this.player.x, this.player.y, 15);
         this.wakeGfx.lineStyle(1, 0xaaddff, pulse * 0.5);
         this.wakeGfx.strokeCircle(this.player.x, this.player.y, 18);
+        // Shield hum: play every 0.3s
+        this.shieldHumCd = (this.shieldHumCd || 0) - dt;
+        if (this.shieldHumCd <= 0) { Audio.shieldHum(); this.shieldHumCd = 0.3; }
       }
 
       // ── Night stars overlay (starsGfx cleared in drawBackground)
